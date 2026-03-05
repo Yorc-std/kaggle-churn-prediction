@@ -1,0 +1,47 @@
+# Data files
+data/*.csv
+*.csv
+
+# Model files
+*.pkl
+*.joblib
+models/
+
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kaggle
+.kaggle/
+kaggle.json
+
+# Books (large PDFs)
+books/*.pdf
+
+# Logs
+*.log
+logs/
