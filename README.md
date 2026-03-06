@@ -4,10 +4,23 @@ A machine learning solution for predicting customer churn in the telecommunicati
 
 ## 📊 Leaderboard Progress
 
-| Version | Features | Model | CV AUC | Public LB | Rank | Date |
-|---------|----------|-------|--------|-----------|------|------|
-| Baseline | LabelEncoder | LightGBM | 0.9164 | 0.91316 | 577/827 (70%) | 2026-03-05 |
-| v1 | TBD | TBD | TBD | TBD | TBD | TBD |
+| Version | Features | Model | CV AUC | Public LB | Improvement | Date |
+|---------|----------|-------|--------|-----------|-------------|------|
+| Baseline | LabelEncoder | LightGBM | 0.9164 | 0.91316 | - | 2026-03-05 |
+| V1 | Target Encoding + 5 interactions | LightGBM | 0.91603 | 0.91359 | +0.00043 | 2026-03-06 |
+| V2 | Keep original numerical + core features | LightGBM | 0.91612 | 0.91370 | +0.00011 | 2026-03-06 |
+| V2 XGBoost | Same as V2, switch to XGBoost | XGBoost | 0.91638 | 0.91393 | +0.00023 | 2026-03-06 |
+| **V2 XGBoost + Pseudo** | **+ Pseudo Labels (threshold=0.95)** | **XGBoost** | **0.91640** | **0.91401** | **+0.00008** | **2026-03-06** |
+
+**Current Rank**: ~540 / 827+ (Top 65%)  
+**Gap to 1st Place**: 0.00318 (0.35%)  
+**Total Improvement**: +0.00085 (0.09%)
+
+### Failed Experiments
+- V3: 17 advanced features → LB 0.91335 (overfitting)
+- V4: Top 8 features only → LB 0.91331 (still worse)
+- V5: ORIG_proba features → LB 0.91381 (original dataset too small)
+- V6: Full training (3000+ rounds) → LB 0.91393 (no improvement)
 
 ## 🎯 Competition Info
 
@@ -84,40 +97,47 @@ This project is built upon insights from:
 
 ## 🔑 Key Insights
 
-1. **Feature Engineering > Model Selection**: 80% of improvement comes from better features
-2. **Target Encoding**: More effective than One-Hot for high-cardinality categorical features
-3. **Cross Features**: Business logic often hides in feature interactions
-4. **Stratified K-Fold CV**: Essential for reliable validation
-5. **Leakage Prevention**: Always compute statistics within CV folds
+### What Worked ✅
+1. **Simplicity > Complexity**: Core features (24) outperformed advanced features (36+)
+2. **XGBoost > LightGBM**: +0.00023 improvement just by switching models
+3. **Pseudo Labels**: Effective with threshold=0.95 (47.9% of test set)
+4. **Target Encoding**: More effective than One-Hot for categorical features
+5. **Keep Original Numerical Features**: Discretization loses information
 
-## 📈 Roadmap
+### What Didn't Work ❌
+1. **ORIG_proba Features**: Original dataset too small (7K vs 594K), distribution mismatch
+2. **Over-Engineering**: Adding 17 advanced features introduced noise
+3. **Over-Training**: 3000+ rounds improved CV but not LB (overfitting)
+4. **Lower Pseudo Threshold**: 0.90 had best CV but worse LB than 0.95
 
-### Phase 1: Feature Engineering
-- [ ] Implement Target Encoding (avoid leakage)
-- [ ] Create interaction features (Contract × InternetService, etc.)
-- [ ] Binning numerical features (tenure, MonthlyCharges)
-- [ ] Feature selection
-
-### Phase 2: Validation Strategy
-- [ ] Switch to 5-fold Stratified CV
-- [ ] Compare CV scores with LB scores
-- [ ] Detect overfitting
-
-### Phase 3: Model Ensemble
-- [ ] Train multiple models (LightGBM, XGBoost, CatBoost)
-- [ ] Implement proper stacking (OOF predictions)
-- [ ] Hyperparameter tuning
-
-### Phase 4: Final Push
-- [ ] Feature importance analysis
-- [ ] Model interpretation
-- [ ] Documentation
+### Lessons Learned 📚
+1. **Don't over-optimize CV scores**: Best CV ≠ Best LB (balance is key)
+2. **Feature quality > quantity**: 24 good features > 36 noisy features
+3. **Early stopping is crucial**: Prevents overfitting while allowing sufficient training
+4. **Playground-specific tricks don't always work**: ORIG_proba failed due to dataset size
+5. **Stratified K-Fold CV is reliable**: OOF and LB gap stable at ~-0.0024
 
 ## 🎯 Goals
 
-- **Short-term**: Top 50% (AUC > 0.916)
-- **Mid-term**: Top 30% (AUC > 0.920)
-- **Long-term**: Top 10% (AUC > 0.925)
+- ✅ **Short-term**: Top 70% (AUC > 0.914) - **Achieved: 0.91401**
+- ⏳ **Mid-term**: Top 50% (AUC > 0.916) - **Current: Top 65%**
+- 🎯 **Long-term**: Top 30% (AUC > 0.920)
+
+## 📈 Next Steps (If Continuing)
+
+### Potential Improvements
+1. **Model Ensemble**: LightGBM + XGBoost weighted average
+2. **More Feature Interactions**: All feature pairs (systematic approach)
+3. **Numerical Transformations**: Log1p, Sqrt, Rank (from top notebooks)
+4. **10-Fold CV**: More stable evaluation (but 2x training time)
+5. **Inner KFold Target Encoding**: Prevent leakage more rigorously
+
+### Analysis from Top Performers (CV 0.917+)
+- **Key difference**: 60+ features vs our 24
+- **Numerical transformations**: Log1p, Sqrt, Rank, Frequency encoding
+- **GPU acceleration**: 10-100x faster training
+- **Extreme patience**: 50,000 n_estimators with early_stopping=500
+- **Lower learning rate**: 0.005 vs our 0.01
 
 ## 📝 Experiment Log
 
