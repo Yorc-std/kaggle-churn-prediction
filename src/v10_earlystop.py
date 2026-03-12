@@ -222,7 +222,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
     )
 
     _, X_test_enc = target_encode_cv(
-        X_tr, y_tr, X_test, ALL_CAT_COLS, n_splits=5, smoothing=5
+        X_tr, y_tr, X_test, ALL_CAT_COLS, n_splits=1, smoothing=5
     )
 
     dtest = xgb.DMatrix(X_test_enc)
