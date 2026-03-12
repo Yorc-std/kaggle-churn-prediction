@@ -162,7 +162,7 @@ lgb_params = {
     "reg_lambda": 1.0,
     "random_state": 42,
     "n_jobs": -1,
-    "device": "gpu",
+    "device": "cpu",
     "verbose": -1,
 }
 
@@ -211,7 +211,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
         valid_sets=[lgb_val],
         callbacks=[
             lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=True),
-            lgb.log_evaluation(period=100),
+            lgb.log_evaluation(period=500),
         ],
     )
 
