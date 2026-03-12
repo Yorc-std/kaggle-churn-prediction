@@ -11,9 +11,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-print("=" * 50)
 print("特征工程 - 一次性计算")
-print("=" * 50)
 
 train = pd.read_csv("data/train.csv")
 test = pd.read_csv("data/test.csv")
@@ -123,8 +121,6 @@ X_test_transformed.to_csv("data/test_features.csv", index=False)
 print(f"  训练集特征: data/train_features.csv ({X_transformed.shape})")
 print(f"  测试集特征: data/test_features.csv ({X_test_transformed.shape})")
 
-print("\n" + "=" * 50)
-print("特征工程完成!")
-print("=" * 50)
+print("\n特征工程完成!")
 print("\n接下来运行训练脚本:")
 print("  python src/v9_ensemble.py")

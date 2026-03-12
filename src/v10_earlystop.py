@@ -1,12 +1,13 @@
 """
-V9: LightGBM + XGBoost 双模型融合 + 服务统计特征
+V10: LightGBM + XGBoost 双模型融合 + 服务统计特征 + 早停机制(5轮)
 - 加载预处理特征 (train_features.csv, test_features.csv)
 - Target Encoding (在CV内部进行，避免数据泄露)
 - 双模型加权融合
+- 早停机制: 5轮无提升则停止
 
 使用方法:
   1. 先运行 python src/feature_engineering.py 生成特征文件
-  2. 再运行 python src/v9_ensemble.py 进行模型训练
+  2. 再运行 python src/v10_ensemble.py 进行模型训练
 """
 
 import pandas as pd
@@ -34,7 +35,7 @@ def suppress_gpu_warnings():
         devnull.close()
 
 
-print("V9: LightGBM + XGBoost Ensemble")
+print("V10: LightGBM + XGBoost Ensemble (Early Stopping: 5 rounds)")
 
 print("\n加载预处理特征...")
 train = pd.read_csv("data/train_features.csv")
@@ -125,7 +126,7 @@ def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=5, smoothing=5
 
 
 print("\n模型训练")
-skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
 
 oof_xgb = np.zeros(len(X))
 oof_lgb = np.zeros(len(X))
@@ -165,8 +166,10 @@ lgb_params = {
     "verbose": -1,
 }
 
+EARLY_STOPPING_ROUNDS = 50
+
 for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
-    print(f"\nFold {fold}/5")
+    print(f"\nFold {fold}")
 
     X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
     y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
@@ -174,9 +177,6 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
     X_tr_enc, X_val_enc = target_encode_cv(
         X_tr, y_tr, X_val, ALL_CAT_COLS, n_splits=5, smoothing=5
     )
-
-    print(f"编码后特征数: {X_tr_enc.shape[1]}")
-
     print("  [XGBoost] 训练中...")
     dtrain = xgb.DMatrix(X_tr_enc, label=y_tr)
     dval = xgb.DMatrix(X_val_enc, label=y_val)
@@ -186,8 +186,12 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
         dtrain,
         num_boost_round=10000,
         evals=[(dval, "val")],
-        early_stopping_rounds=200,
-        verbose_eval=False,
+        early_stopping_rounds=EARLY_STOPPING_ROUNDS,
+        verbose_eval=100,
+        custom_metric=lambda pred, dtrain: (
+            "auc",
+            roc_auc_score(dtrain.get_label(), pred),
+        ),
     )
 
     oof_xgb[val_idx] = xgb_model.predict(dval)
@@ -206,7 +210,8 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
         num_boost_round=10000,
         valid_sets=[lgb_val],
         callbacks=[
-            lgb.early_stopping(stopping_rounds=200, verbose=False),
+            lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=True),
+            lgb.log_evaluation(period=100),
         ],
     )
 
@@ -251,11 +256,10 @@ print("\n最终结果")
 print(f"XGBoost  OOF AUC: {xgb_oof_auc:.6f}")
 print(f"LightGBM OOF AUC: {lgb_oof_auc:.6f}")
 print(f"融合后   OOF AUC: {best_auc:.6f}")
-print(f"提升: {best_auc - max(xgb_oof_auc, lgb_oof_auc):+.6f}")
 
 submission = pd.DataFrame({"id": test_ids, "Churn": test_preds})
-submission.to_csv("submissions/v9_ensemble.csv", index=False)
-print(f"\n提交文件已保存: submissions/v9_ensemble.csv")
+submission.to_csv("submissions/v10_ensemble.csv", index=False)
+print(f"\n提交文件已保存: submissions/v10_ensemble.csv")
 print(
     f"预测分布: min={test_preds.min():.4f}, max={test_preds.max():.4f}, mean={test_preds.mean():.4f}"
 )
