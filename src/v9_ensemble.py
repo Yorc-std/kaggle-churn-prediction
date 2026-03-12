@@ -1,11 +1,12 @@
 """
 V9: LightGBM + XGBoost 双模型融合 + 服务统计特征
-- 服务统计特征 (service_count, has_internet, avg_charge_per_service)
-- 数值变换 (Frequency, Log1p, Sqrt, Rank)
-- Target Encoding
+- 加载预处理特征 (train_features.csv, test_features.csv)
+- Target Encoding (在CV内部进行，避免数据泄露)
 - 双模型加权融合
 
-预期提升: +0.0005-0.0007
+使用方法:
+  1. 先运行 python src/feature_engineering.py 生成特征文件
+  2. 再运行 python src/v9_ensemble.py 进行模型训练
 """
 
 import pandas as pd
@@ -16,7 +17,6 @@ import xgboost as xgb
 import lightgbm as lgb
 import warnings
 import os
-import sys
 from contextlib import contextmanager
 
 warnings.filterwarnings("ignore")
@@ -34,13 +34,18 @@ def suppress_gpu_warnings():
         devnull.close()
 
 
-print("V9: LightGBM + XGBoost Ensemble + Service Features")
+print("=" * 50)
+print("V9: LightGBM + XGBoost Ensemble")
+print("=" * 50)
 
-train = pd.read_csv("data/train.csv")
-test = pd.read_csv("data/test.csv")
+print("\n加载预处理特征...")
+train = pd.read_csv("data/train_features.csv")
+test = pd.read_csv("data/test_features.csv")
+
+y = train["Churn"]
+test_ids = test["id"]
 
 X = train.drop(["id", "Churn"], axis=1)
-y = train["Churn"].map({"Yes": 1, "No": 0})
 X_test = test.drop(["id"], axis=1)
 
 print(f"训练集: {X.shape}, 测试集: {X_test.shape}")
@@ -65,60 +70,6 @@ CAT_COLS = [
     "PaymentMethod",
 ]
 
-NUM_COLS = ["tenure", "MonthlyCharges", "TotalCharges"]
-
-SERVICE_COLS = [
-    "OnlineSecurity",
-    "OnlineBackup",
-    "DeviceProtection",
-    "TechSupport",
-    "StreamingTV",
-    "StreamingMovies",
-]
-
-df = pd.concat([X, X_test], axis=0, ignore_index=True)
-
-df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
-df["TotalCharges"] = df["TotalCharges"].fillna(0)
-
-print("特征工程")
-print("\n[1] 服务统计特征...")
-df["service_count"] = (df[SERVICE_COLS] == "Yes").sum(axis=1)
-df["has_internet"] = (df["InternetService"] != "No").astype(int)
-df["has_phone"] = (df["PhoneService"] == "Yes").astype(int)
-df["avg_charge_per_service"] = df["MonthlyCharges"] / (df["service_count"] + 1)
-df["total_services"] = df["service_count"] + df["has_internet"] + df["has_phone"]
-print(f"  service_count: mean={df['service_count'].mean():.2f}")
-print(f"  has_internet: {df['has_internet'].mean():.2%}")
-print(f"  avg_charge_per_service: mean={df['avg_charge_per_service'].mean():.2f}")
-
-print("\n[2] 数值变换...")
-for col in NUM_COLS:
-    freq = df[col].value_counts(normalize=True)
-    df[f"FREQ_{col}"] = df[col].map(freq).fillna(0)
-
-for col in NUM_COLS:
-    df[f"LOG1P_{col}"] = np.log1p(df[col])
-
-for col in NUM_COLS:
-    df[f"SQRT_{col}"] = np.sqrt(df[col])
-
-for col in NUM_COLS:
-    df[f"RANK_{col}"] = df[col].rank(pct=True)
-
-print(f"  数值变换特征: {len(NUM_COLS) * 4} 个")
-
-print("\n[3] 交叉特征...")
-df["Contract_InternetService"] = df["Contract"] + "_" + df["InternetService"]
-df["tenure_MonthlyCharges"] = df["tenure"] * df["MonthlyCharges"]
-df["SeniorCitizen_TechSupport"] = (
-    df["SeniorCitizen"].astype(str) + "_" + df["TechSupport"]
-)
-df["Payment_Contract"] = df["PaymentMethod"] + "_" + df["Contract"]
-df["Internet_Security"] = df["InternetService"] + "_" + df["OnlineSecurity"]
-df["tenure_service"] = df["tenure"] * df["service_count"]
-df["charge_per_tenure"] = df["TotalCharges"] / (df["tenure"] + 1)
-
 CROSS_COLS = [
     "Contract_InternetService",
     "SeniorCitizen_TechSupport",
@@ -126,9 +77,7 @@ CROSS_COLS = [
     "Internet_Security",
 ]
 
-X_transformed = df.iloc[: len(X)].copy()
-X_test_transformed = df.iloc[len(X) :].copy()
-print(f"\n变换后特征数: {X_transformed.shape[1]}")
+ALL_CAT_COLS = CAT_COLS + CROSS_COLS
 
 
 def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=5, smoothing=5):
@@ -177,13 +126,14 @@ def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=5, smoothing=5
     return X_train_encoded, X_test_encoded
 
 
-print("模型训练")
+print("\n模型训练")
+print("-" * 50)
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-oof_xgb = np.zeros(len(X_transformed))
-oof_lgb = np.zeros(len(X_transformed))
-test_xgb = np.zeros(len(X_test_transformed))
-test_lgb = np.zeros(len(X_test_transformed))
+oof_xgb = np.zeros(len(X))
+oof_lgb = np.zeros(len(X))
+test_xgb = np.zeros(len(X_test))
+test_lgb = np.zeros(len(X_test))
 
 xgb_params = {
     "objective": "binary:logistic",
@@ -218,12 +168,10 @@ lgb_params = {
     "verbose": -1,
 }
 
-ALL_CAT_COLS = CAT_COLS + CROSS_COLS
+for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
+    print(f"\nFold {fold}/5")
 
-for fold, (train_idx, val_idx) in enumerate(skf.split(X_transformed, y), 1):
-    print(f"Fold {fold}/5")
-
-    X_tr, X_val = X_transformed.iloc[train_idx], X_transformed.iloc[val_idx]
+    X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
     y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
     X_tr_enc, X_val_enc = target_encode_cv(
@@ -232,7 +180,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X_transformed, y), 1):
 
     print(f"编码后特征数: {X_tr_enc.shape[1]}")
 
-    print("\n[XGBoost] 训练中...")
+    print("  [XGBoost] 训练中...")
     dtrain = xgb.DMatrix(X_tr_enc, label=y_tr)
     dval = xgb.DMatrix(X_val_enc, label=y_val)
 
@@ -247,9 +195,11 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X_transformed, y), 1):
 
     oof_xgb[val_idx] = xgb_model.predict(dval)
     xgb_auc = roc_auc_score(y_val, oof_xgb[val_idx])
-    print(f"XGBoost Fold {fold} AUC: {xgb_auc:.6f} (iter: {xgb_model.best_iteration})")
+    print(
+        f"  XGBoost Fold {fold} AUC: {xgb_auc:.6f} (iter: {xgb_model.best_iteration})"
+    )
 
-    print("\n[LightGBM] 训练中...")
+    print("  [LightGBM] 训练中...")
     lgb_train = lgb.Dataset(X_tr_enc, label=y_tr)
     lgb_val = lgb.Dataset(X_val_enc, label=y_val, reference=lgb_train)
 
@@ -265,17 +215,21 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X_transformed, y), 1):
 
     oof_lgb[val_idx] = lgb_model.predict(X_val_enc)
     lgb_auc = roc_auc_score(y_val, oof_lgb[val_idx])
-    print(f"LightGBM Fold {fold} AUC: {lgb_auc:.6f} (iter: {lgb_model.best_iteration})")
+    print(
+        f"  LightGBM Fold {fold} AUC: {lgb_auc:.6f} (iter: {lgb_model.best_iteration})"
+    )
 
     _, X_test_enc = target_encode_cv(
-        X_tr, y_tr, X_test_transformed, ALL_CAT_COLS, n_splits=5, smoothing=5
+        X_tr, y_tr, X_test, ALL_CAT_COLS, n_splits=5, smoothing=5
     )
 
     dtest = xgb.DMatrix(X_test_enc)
     test_xgb += xgb_model.predict(dtest) / 5
     test_lgb += lgb_model.predict(X_test_enc) / 5
 
+print("\n" + "=" * 50)
 print("模型评估")
+print("=" * 50)
 xgb_oof_auc = roc_auc_score(y, oof_xgb)
 lgb_oof_auc = roc_auc_score(y, oof_lgb)
 
@@ -298,17 +252,17 @@ print(f"融合后 OOF AUC: {best_auc:.6f}")
 
 test_preds = best_weight * test_xgb + (1 - best_weight) * test_lgb
 
+print("\n" + "=" * 50)
 print("最终结果")
+print("=" * 50)
 print(f"XGBoost  OOF AUC: {xgb_oof_auc:.6f}")
 print(f"LightGBM OOF AUC: {lgb_oof_auc:.6f}")
 print(f"融合后   OOF AUC: {best_auc:.6f}")
 print(f"提升: {best_auc - max(xgb_oof_auc, lgb_oof_auc):+.6f}")
 
-submission = pd.DataFrame({"id": test["id"], "Churn": test_preds})
+submission = pd.DataFrame({"id": test_ids, "Churn": test_preds})
 submission.to_csv("submissions/v9_ensemble.csv", index=False)
 print(f"\n提交文件已保存: submissions/v9_ensemble.csv")
 print(
     f"预测分布: min={test_preds.min():.4f}, max={test_preds.max():.4f}, mean={test_preds.mean():.4f}"
 )
-
-# ps:不需要每次重新计算特征，可以用云服务器训练。
