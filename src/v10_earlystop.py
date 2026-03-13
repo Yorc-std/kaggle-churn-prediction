@@ -11,7 +11,6 @@ V10: LightGBM + XGBoost 双模型融合 + 服务统计特征 + 早停机制(5轮
   2. 再运行 python src/v10_ensemble.py 进行模型训练
 """
 
-from tkinter import N
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
@@ -202,39 +201,20 @@ lgb_params = {
 EARLY_STOPPING_ROUNDS = 50
 
 
-class XGBLearningRateCallback(xgb.TrainingCallback):
+def xgb_learning_rate_callback(env):
     """XGBoost 学习率回调函数"""
-
-    def __init__(self, lr_start=LR_START, lr_end=LR_END, lr_decay_iter=LR_DECAY_ITER):
-        self.lr_start = lr_start
-        self.lr_end = lr_end
-        self.lr_decay_iter = lr_decay_iter
-
-    def after_iteration(self, model, epoch, evals_log):
-        new_lr = get_learning_rate(epoch, mode="linear")
-        model.set_param("learning_rate", new_lr)
-        if epoch % 100 == 0:
-            print(f"    [Iter {epoch}] LR: {new_lr:.6f}")
-        return False
+    new_lr = get_learning_rate(env.iteration, mode="linear")
+    env.model.set_param("learning_rate", new_lr)
+    if env.iteration % 100 == 0:
+        print(f"    [Iter {env.iteration}] LR: {new_lr:.6f}")
 
 
-class LGBLearningRateCallback:
+def lgb_learning_rate_callback(env):
     """LightGBM 学习率回调函数"""
-
-    def __init__(self, lr_start=LR_START, lr_end=LR_END, lr_decay_iter=LR_DECAY_ITER):
-        self.lr_start = lr_start
-        self.lr_end = lr_end
-        self.lr_decay_iter = lr_decay_iter
-
-    def __call__(self, env):
-        new_lr = get_learning_rate(env.iteration, mode="linear")
-        env.model.params["learning_rate"] = new_lr
-        if env.iteration % 100 == 0:
-            print(f"    [Iter {env.iteration}] LR: {new_lr:.6f}")
-
-
-xgb_lr_callback = XGBLearningRateCallback()
-lgb_lr_callback = LGBLearningRateCallback()
+    new_lr = get_learning_rate(env.iteration, mode="linear")
+    env.model.params["learning_rate"] = new_lr
+    if env.iteration % 100 == 0:
+        print(f"    [Iter {env.iteration}] LR: {new_lr:.6f}")
 
 
 for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
@@ -244,7 +224,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
     y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
     X_tr_enc, X_val_enc = target_encode_cv(
-        X_tr, y_tr, X_val, ALL_CAT_COLS, n_splits=2, smoothing=5
+        X_tr, y_tr, X_val, ALL_CAT_COLS, n_splits=10, smoothing=5
     )
     print("  [XGBoost] 训练中...")
     dtrain = xgb.DMatrix(X_tr_enc, label=y_tr)
@@ -261,7 +241,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
             "auc",
             roc_auc_score(dtrain.get_label(), pred),
         ),
-        callbacks=[xgb_lr_callback],
+        callbacks=[xgb_learning_rate_callback],
     )
 
     oof_xgb[val_idx] = xgb_model.predict(dval)
@@ -282,7 +262,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
         callbacks=[
             lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=True),
             lgb.log_evaluation(period=500),
-            lgb_lr_callback,
+            lgb_learning_rate_callback,
         ],
     )
 
@@ -293,12 +273,12 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
     )
 
     _, X_test_enc = target_encode_cv(
-        X_tr, y_tr, X_test, ALL_CAT_COLS, n_splits=2, smoothing=5
+        X_tr, y_tr, X_test, ALL_CAT_COLS, n_splits=10, smoothing=5
     )
 
     dtest = xgb.DMatrix(X_test_enc)
-    test_xgb += xgb_model.predict(dtest) / 2
-    test_lgb += lgb_model.predict(X_test_enc) / 2
+    test_xgb += xgb_model.predict(dtest) / 10
+    test_lgb += lgb_model.predict(X_test_enc) / 10
 
 print("\n模型评估")
 xgb_oof_auc = roc_auc_score(y, oof_xgb)
