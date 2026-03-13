@@ -24,7 +24,7 @@ import math
 
 warnings.filterwarnings("ignore")
 
-LR_START = 0.3
+LR_START = 0.1
 LR_END = 0.001
 LR_DECAY_ITER = 300
 NUM_BOOST_ROUND = 1000
@@ -194,19 +194,36 @@ lgb_params = {
     "reg_lambda": 1.0,
     "random_state": 42,
     "n_jobs": -1,
-    "device": "cuda",
+    "device": "cpu",
     "verbose": -1,
 }
 
 EARLY_STOPPING_ROUNDS = 50
 
 
-def xgb_learning_rate_callback(env):
+class XgbLearningRateCallback(xgb.callback.TrainingCallback):
     """XGBoost 学习率回调函数"""
-    new_lr = get_learning_rate(env.iteration, mode="linear")
-    env.model.set_param("learning_rate", new_lr)
-    if env.iteration % 100 == 0:
-        print(f"    [Iter {env.iteration}] LR: {new_lr:.6f}")
+
+    def __init__(
+        self,
+        lr_start=LR_START,
+        lr_end=LR_END,
+        lr_decay_iter=LR_DECAY_ITER,
+        mode="linear",
+    ):
+        self.lr_start = lr_start
+        self.lr_end = lr_end
+        self.lr_decay_iter = lr_decay_iter
+        self.mode = mode
+
+    def after_iteration(self, model, epoch, evals_log):
+        new_lr = get_learning_rate(
+            epoch, self.lr_start, self.lr_end, self.lr_decay_iter, self.mode
+        )
+        model.set_param("learning_rate", new_lr)
+        if epoch % 100 == 0:
+            print(f"    [Iter {epoch}] LR: {new_lr:.6f}")
+        return False
 
 
 def lgb_learning_rate_callback(env):
@@ -241,7 +258,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
             "auc",
             roc_auc_score(dtrain.get_label(), pred),
         ),
-        callbacks=[xgb_learning_rate_callback],
+        callbacks=[XgbLearningRateCallback()],
     )
 
     oof_xgb[val_idx] = xgb_model.predict(dval)
