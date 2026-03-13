@@ -24,19 +24,24 @@ import math
 
 warnings.filterwarnings("ignore")
 
-LR_START = 0.1
+LR_START = 0.3
 LR_END = 0.001
-MAX_ITER = 1000
+LR_DECAY_ITER = 300
+NUM_BOOST_ROUND = 1000
 
 
 def get_learning_rate(
-    current_iter, lr_start=LR_START, lr_end=LR_END, max_iter=MAX_ITER, mode="cosine"
+    current_iter,
+    lr_start=LR_START,
+    lr_end=LR_END,
+    lr_decay_iter=LR_DECAY_ITER,
+    mode="linear",
 ):
     """
     动态学习率调度器
     mode: "cosine" - 余弦退火, "linear" - 线性衰减, "exp" - 指数衰减
     """
-    progress = min(current_iter / max_iter, 1.0)
+    progress = min(current_iter / lr_decay_iter, 1.0)
 
     if mode == "cosine":
         lr = lr_end + 0.5 * (lr_start - lr_end) * (1 + math.cos(math.pi * progress))
@@ -198,7 +203,7 @@ EARLY_STOPPING_ROUNDS = 50
 
 def xgb_learning_rate_callback(env):
     """XGBoost 学习率回调函数"""
-    new_lr = get_learning_rate(env.iteration, mode="cosine")
+    new_lr = get_learning_rate(env.iteration, mode="linear")
     env.model.set_param("learning_rate", new_lr)
     if env.iteration % 100 == 0:
         print(f"    [Iter {env.iteration}] LR: {new_lr:.6f}")
@@ -206,7 +211,7 @@ def xgb_learning_rate_callback(env):
 
 def lgb_learning_rate_callback(env):
     """LightGBM 学习率回调函数"""
-    new_lr = get_learning_rate(env.iteration, mode="cosine")
+    new_lr = get_learning_rate(env.iteration, mode="linear")
     env.model.params["learning_rate"] = new_lr
     if env.iteration % 100 == 0:
         print(f"    [Iter {env.iteration}] LR: {new_lr:.6f}")
@@ -228,7 +233,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
     xgb_model = xgb.train(
         xgb_params,
         dtrain,
-        num_boost_round=MAX_ITER,
+        num_boost_round=NUM_BOOST_ROUND,
         evals=[(dval, "val")],
         early_stopping_rounds=EARLY_STOPPING_ROUNDS,
         verbose_eval=100,
@@ -252,7 +257,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
     lgb_model = lgb.train(
         lgb_params,
         lgb_train,
-        num_boost_round=MAX_ITER,
+        num_boost_round=NUM_BOOST_ROUND,
         valid_sets=[lgb_val],
         callbacks=[
             lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=True),
