@@ -11,12 +11,12 @@ import pickle
 
 warnings.filterwarnings("ignore")
 
-XGB_LR_START = 0.05
-XGB_LR_END = 0.005
+XGB_LR_START = 0.06
+XGB_LR_END = 0.01
 XGB_LR_DECAY_ITER = 1000
 
-LGB_LR_START = 0.05
-LGB_LR_END = 0.005
+LGB_LR_START = 0.06
+LGB_LR_END = 0.01
 LGB_LR_DECAY_ITER = 1000
 
 NUM_BOOST_ROUND = 5000
@@ -153,8 +153,6 @@ class XgbLearningRateCallback(xgb.callback.TrainingCallback):
             epoch, self.lr_start, self.lr_end, self.lr_decay_iter, self.mode
         )
         model.set_param("learning_rate", new_lr)
-        if epoch % 100 == 0:
-            print(f"    [Iter {epoch}] LR: {new_lr:.6f}")
         return False
 
 
@@ -163,8 +161,6 @@ def lgb_learning_rate_callback(env):
         env.iteration, LGB_LR_START, LGB_LR_END, LGB_LR_DECAY_ITER, mode="cosine"
     )
     env.model.reset_parameter({"learning_rate": new_lr})
-    if env.iteration % 100 == 0:
-        print(f"    [Iter {env.iteration}] LR: {new_lr:.6f}")
 
 
 print("V11: LightGBM + XGBoost Ensemble")
@@ -269,7 +265,7 @@ for fold in range(1, 11):
         num_boost_round=NUM_BOOST_ROUND,
         evals=[(dval, "val")],
         early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-        verbose_eval=50,
+        verbose_eval=200,
         custom_metric=lambda pred, dtrain: (
             "auc",
             roc_auc_score(dtrain.get_label(), pred),
@@ -293,7 +289,7 @@ for fold in range(1, 11):
         valid_sets=[lgb_val],
         callbacks=[
             lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=True),
-            lgb.log_evaluation(period=50),
+            lgb.log_evaluation(period=200),
             lgb_learning_rate_callback,
         ],
     )
@@ -333,7 +329,7 @@ submission = pd.DataFrame({"id": test_ids, "Churn": test_preds})
 submission.to_csv("submissions/v11_ensemble.csv", index=False)
 print(f"\n提交文件已保存: submissions/v11_ensemble.csv")
 print(
-    f"预测分布: min={test_preds.min():.4f}, max={test_preds.max():.4f}, mean={test_preds.mean():.4f}"
+    f"预测分布: min={test_preds.min():.5f}, max={test_preds.max():.5f}, mean={test_preds.mean():.5f}"
 )
 
 cache_path = "cache/te_encodings.pkl"
