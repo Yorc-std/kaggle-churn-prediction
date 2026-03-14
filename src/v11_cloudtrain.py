@@ -194,10 +194,6 @@ ALL_CAT_COLS = [
     "Contract",
     "PaperlessBilling",
     "PaymentMethod",
-    "Contract_InternetService",
-    "SeniorCitizen_TechSupport",
-    "Payment_Contract",
-    "Internet_Security",
 ]
 
 xgb_params = {
