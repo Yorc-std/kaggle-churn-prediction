@@ -216,7 +216,7 @@ xgb_params = {
     "reg_lambda": 2.0,
     "random_state": 42,
     "tree_method": "hist",
-    "device": "cpu",
+    "device": "cuda",
     "n_jobs": -1,
 }
 
