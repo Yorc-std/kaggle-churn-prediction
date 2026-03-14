@@ -65,11 +65,9 @@ print("\n[1] 服务统计特征...")
 df["service_count"] = (df[SERVICE_COLS] == "Yes").sum(axis=1)
 df["has_internet"] = (df["InternetService"] != "No").astype(int)
 df["has_phone"] = (df["PhoneService"] == "Yes").astype(int)
-df["avg_charge_per_service"] = df["MonthlyCharges"] / (df["service_count"] + 1)
 df["total_services"] = df["service_count"] + df["has_internet"] + df["has_phone"]
 print(f"  service_count: mean={df['service_count'].mean():.2f}")
 print(f"  has_internet: {df['has_internet'].mean():.2%}")
-print(f"  avg_charge_per_service: mean={df['avg_charge_per_service'].mean():.2f}")
 
 print("\n[2] 数值变换...")
 for col in NUM_COLS:
@@ -86,24 +84,6 @@ for col in NUM_COLS:
     df[f"RANK_{col}"] = df[col].rank(pct=True)
 
 print(f"  数值变换特征: {len(NUM_COLS) * 4} 个")
-
-print("\n[3] 交叉特征...")
-df["Contract_InternetService"] = df["Contract"] + "_" + df["InternetService"]
-df["tenure_MonthlyCharges"] = df["tenure"] * df["MonthlyCharges"]
-df["SeniorCitizen_TechSupport"] = (
-    df["SeniorCitizen"].astype(str) + "_" + df["TechSupport"]
-)
-df["Payment_Contract"] = df["PaymentMethod"] + "_" + df["Contract"]
-df["Internet_Security"] = df["InternetService"] + "_" + df["OnlineSecurity"]
-df["tenure_service"] = df["tenure"] * df["service_count"]
-df["charge_per_tenure"] = df["TotalCharges"] / (df["tenure"] + 1)
-
-CROSS_COLS = [
-    "Contract_InternetService",
-    "SeniorCitizen_TechSupport",
-    "Payment_Contract",
-    "Internet_Security",
-]
 
 X_transformed = df.iloc[: len(X)].copy()
 X_test_transformed = df.iloc[len(X) :].copy()

@@ -1,3 +1,8 @@
+"""
+V12: Decision Stumps Ensemble (max_depth=1)
+基于 max_depth=1 最佳的发现，使用决策树桩模型
+"""
+
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
@@ -36,48 +41,8 @@ def get_learning_rate(current_iter, lr_start, lr_end, lr_decay_iter, mode="cosin
     return lr
 
 
-def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=10, smoothing=5):
-    X_train_encoded = X_train.copy()
-    X_test_encoded = X_test.copy()
-    global_mean = y_train.mean()
-
-    for col in cat_cols:
-        oof_encoding = np.zeros(len(X_train))
-        skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-
-        for train_idx, val_idx in skf.split(X_train, y_train):
-            X_tr, y_tr = X_train.iloc[train_idx], y_train.iloc[train_idx]
-            encoding_map = {}
-            for cat in X_train[col].unique():
-                mask = X_tr[col] == cat
-                count = mask.sum()
-                mean = y_tr[mask].mean() if count > 0 else global_mean
-                encoding_map[cat] = (count * mean + smoothing * global_mean) / (
-                    count + smoothing
-                )
-            oof_encoding[val_idx] = (
-                X_train.iloc[val_idx][col].map(encoding_map).fillna(global_mean)
-            )
-
-        X_train_encoded[f"TE_{col}"] = oof_encoding
-
-        encoding_map = {}
-        for cat in X_train[col].unique():
-            mask = X_train[col] == cat
-            count = mask.sum()
-            mean = y_train[mask].mean() if count > 0 else global_mean
-            encoding_map[cat] = (count * mean + smoothing * global_mean) / (
-                count + smoothing
-            )
-        X_test_encoded[f"TE_{col}"] = X_test[col].map(encoding_map).fillna(global_mean)
-
-    X_train_encoded = X_train_encoded.drop(cat_cols, axis=1)
-    X_test_encoded = X_test_encoded.drop(cat_cols, axis=1)
-    return X_train_encoded, X_test_encoded
-
-
 def precompute_fold_encodings(X, y, X_test, cat_cols, n_splits=10, smoothing=5):
-    cache_path = "cache/te_encodings.pkl"
+    cache_path = "cache/te_encodings_v12.pkl"
     if os.path.exists(cache_path):
         print(f"从缓存加载: {cache_path}")
         with open(cache_path, "rb") as f:
@@ -111,23 +76,28 @@ def precompute_fold_encodings(X, y, X_test, cat_cols, n_splits=10, smoothing=5):
             "val_idx": val_idx,
             "X_tr_enc": X_tr_enc.drop(cat_cols, axis=1),
             "X_val_enc": X_val_enc.drop(cat_cols, axis=1),
+            "encoding_maps": None,
         }
 
-    X_test_enc = X_test.copy()
-    for col in cat_cols:
-        encoding_map = {}
-        for cat in X[col].unique():
-            mask = X[col] == cat
-            count = mask.sum()
-            mean = y[mask].mean() if count > 0 else global_mean
-            encoding_map[cat] = (count * mean + smoothing * global_mean) / (
-                count + smoothing
-            )
-        X_test_enc[f"TE_{col}"] = X_test[col].map(encoding_map).fillna(global_mean)
+    test_fold_encodings = []
+    for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
+        X_tr, y_tr = X.iloc[train_idx], y.iloc[train_idx]
+        X_test_enc = X_test.copy()
+        for col in cat_cols:
+            encoding_map = {}
+            for cat in X[col].unique():
+                mask = X_tr[col] == cat
+                count = mask.sum()
+                mean = y_tr[mask].mean() if count > 0 else global_mean
+                encoding_map[cat] = (count * mean + smoothing * global_mean) / (
+                    count + smoothing
+                )
+            X_test_enc[f"TE_{col}"] = X_test[col].map(encoding_map).fillna(global_mean)
+        test_fold_encodings.append(X_test_enc.drop(cat_cols, axis=1))
 
     result = {
         "fold_encodings": fold_encodings,
-        "X_test_enc": X_test_enc.drop(cat_cols, axis=1),
+        "test_fold_encodings": test_fold_encodings,
     }
     with open(cache_path, "wb") as f:
         pickle.dump(result, f)
@@ -163,7 +133,7 @@ def lgb_learning_rate_callback(env):
     env.model.reset_parameter({"learning_rate": new_lr})
 
 
-print("V11: LightGBM + XGBoost Ensemble")
+print("V12: Decision Stumps Ensemble (max_depth=1)")
 
 print("\n加载预处理特征...")
 train = pd.read_csv("data/train_features.csv")
@@ -200,10 +170,10 @@ xgb_params = {
     "objective": "binary:logistic",
     "eval_metric": "auc",
     "learning_rate": XGB_LR_START,
-    "max_depth": 6,
-    "min_child_weight": 3,
+    "max_depth": 1,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
+    "colsample_bynode": 0.8,
     "reg_alpha": 0.1,
     "reg_lambda": 1.0,
     "random_state": 42,
@@ -217,9 +187,8 @@ lgb_params = {
     "objective": "binary",
     "metric": "auc",
     "learning_rate": LGB_LR_START,
-    "max_depth": 7,
-    "num_leaves": 50,
-    "min_child_samples": 20,
+    "max_depth": 1,
+    "num_leaves": 2,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
     "reg_alpha": 0.1,
@@ -295,7 +264,7 @@ for fold in range(1, 11):
         f"  [LightGBM] Fold {fold} AUC: {roc_auc_score(y_val, oof_lgb[val_idx]):.6f} (iter: {lgb_model.best_iteration})"
     )
 
-    X_test_enc = encodings["X_test_enc"]
+    X_test_enc = encodings["test_fold_encodings"][fold - 1]
     dtest = xgb.DMatrix(X_test_enc)
     test_xgb += xgb_model.predict(dtest) / 10
     test_lgb += lgb_model.predict(X_test_enc) / 10
@@ -322,13 +291,13 @@ print(f"融合后 OOF AUC: {best_auc:.6f}")
 
 test_preds = best_weight * test_xgb + (1 - best_weight) * test_lgb
 submission = pd.DataFrame({"id": test_ids, "Churn": test_preds})
-submission.to_csv("submissions/v11_ensemble.csv", index=False)
-print(f"\n提交文件已保存: submissions/v11_ensemble.csv")
+submission.to_csv("submissions/v12_stumps.csv", index=False)
+print(f"\n提交文件已保存: submissions/v12_stumps.csv")
 print(
     f"预测分布: min={test_preds.min():.5f}, max={test_preds.max():.5f}, mean={test_preds.mean():.5f}"
 )
 
-cache_path = "cache/te_encodings.pkl"
+cache_path = "cache/te_encodings_v12.pkl"
 if os.path.exists(cache_path):
     os.remove(cache_path)
     print(f"\n已删除缓存文件: {cache_path}")
