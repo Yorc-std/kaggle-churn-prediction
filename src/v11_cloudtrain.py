@@ -8,6 +8,8 @@ import warnings
 import math
 import os
 import pickle
+import hashlib
+import glob
 
 warnings.filterwarnings("ignore")
 
@@ -77,11 +79,12 @@ def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=10, smoothing=
 
 
 def precompute_fold_encodings(X, y, X_test, cat_cols, n_splits=10, smoothing=5):
-    cache_path = "cache/te_encodings.pkl"
-    if os.path.exists(cache_path):
-        print(f"从缓存加载: {cache_path}")
-        with open(cache_path, "rb") as f:
-            return pickle.load(f)
+    for old_cache in glob.glob("cache/te_encodings*.pkl"):
+        os.remove(old_cache)
+        print(f"已删除旧缓存: {old_cache}")
+
+    cols_hash = hashlib.md5(str(sorted(cat_cols)).encode()).hexdigest()[:8]
+    cache_path = f"cache/te_encodings_{cols_hash}.pkl"
 
     print("计算Target Encoding...")
     os.makedirs("cache", exist_ok=True)
@@ -328,7 +331,6 @@ print(
     f"预测分布: min={test_preds.min():.5f}, max={test_preds.max():.5f}, mean={test_preds.mean():.5f}"
 )
 
-cache_path = "cache/te_encodings.pkl"
-if os.path.exists(cache_path):
-    os.remove(cache_path)
-    print(f"\n已删除缓存文件: {cache_path}")
+for cache_file in glob.glob("cache/te_encodings*.pkl"):
+    os.remove(cache_file)
+    print(f"\n已删除缓存文件: {cache_file}")
