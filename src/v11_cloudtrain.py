@@ -11,16 +11,16 @@ import pickle
 
 warnings.filterwarnings("ignore")
 
-XGB_LR_START = 0.2
-XGB_LR_END = 0.003
-XGB_LR_DECAY_ITER = 300
+XGB_LR_START = 0.05
+XGB_LR_END = 0.005
+XGB_LR_DECAY_ITER = 1000
 
-LGB_LR_START = 0.2
-LGB_LR_END = 0.003
-LGB_LR_DECAY_ITER = 200
+LGB_LR_START = 0.05
+LGB_LR_END = 0.005
+LGB_LR_DECAY_ITER = 1000
 
-NUM_BOOST_ROUND = 1000
-EARLY_STOPPING_ROUNDS = 30
+NUM_BOOST_ROUND = 5000
+EARLY_STOPPING_ROUNDS = 200
 
 
 def get_learning_rate(current_iter, lr_start, lr_end, lr_decay_iter, mode="cosine"):
@@ -208,16 +208,17 @@ xgb_params = {
     "objective": "binary:logistic",
     "eval_metric": "auc",
     "learning_rate": XGB_LR_START,
-    "max_depth": 5,
-    "min_child_weight": 5,
+    "max_depth": 6,
+    "min_child_weight": 3,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
-    "reg_alpha": 0.5,
-    "reg_lambda": 2.0,
+    "reg_alpha": 0.1,
+    "reg_lambda": 1.0,
     "random_state": 42,
     "tree_method": "hist",
     "device": "cuda",
     "n_jobs": -1,
+    "scale_pos_weight": 3.44,
 }
 
 lgb_params = {
@@ -225,8 +226,8 @@ lgb_params = {
     "metric": "auc",
     "learning_rate": LGB_LR_START,
     "max_depth": 7,
-    "num_leaves": 63,
-    "min_child_samples": 15,
+    "num_leaves": 50,
+    "min_child_samples": 20,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
     "reg_alpha": 0.1,
@@ -235,6 +236,7 @@ lgb_params = {
     "n_jobs": -1,
     "device": "cpu",
     "verbose": -1,
+    "is_unbalance": True,
 }
 
 print("\n预计算Target Encoding...")
@@ -277,7 +279,7 @@ for fold in range(1, 11):
 
     oof_xgb[val_idx] = xgb_model.predict(dval)
     print(
-        f"  XGBoost Fold {fold} AUC: {roc_auc_score(y_val, oof_xgb[val_idx]):.6f} (iter: {xgb_model.best_iteration})"
+        f"  [XGBoost] Fold {fold} AUC: {roc_auc_score(y_val, oof_xgb[val_idx]):.6f} (iter: {xgb_model.best_iteration})"
     )
 
     print("  [LightGBM] 训练中...")
@@ -298,7 +300,7 @@ for fold in range(1, 11):
 
     oof_lgb[val_idx] = lgb_model.predict(X_val_enc)
     print(
-        f"  LightGBM Fold {fold} AUC: {roc_auc_score(y_val, oof_lgb[val_idx]):.6f} (iter: {lgb_model.best_iteration})"
+        f"  [LightGBM] Fold {fold} AUC: {roc_auc_score(y_val, oof_lgb[val_idx]):.6f} (iter: {lgb_model.best_iteration})"
     )
 
     X_test_enc = encodings["X_test_enc"]
@@ -333,3 +335,8 @@ print(f"\n提交文件已保存: submissions/v11_ensemble.csv")
 print(
     f"预测分布: min={test_preds.min():.4f}, max={test_preds.max():.4f}, mean={test_preds.mean():.4f}"
 )
+
+cache_path = "cache/te_encodings.pkl"
+if os.path.exists(cache_path):
+    os.remove(cache_path)
+    print(f"\n已删除缓存文件: {cache_path}")
