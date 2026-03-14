@@ -14,12 +14,10 @@ train = pd.read_csv('data/train.csv')
 y = (train['Churn'] == 'Yes').astype(int)
 train = train.drop(['id', 'Churn'], axis=1)
 
-# V3 特征工程函数
 def create_advanced_features(df):
     """创建高级特征"""
     df = df.copy()
     
-    # V2 核心特征
     df['Contract_Internet'] = df['Contract'].astype(str) + '_' + df['InternetService'].astype(str)
     df['tenure_MonthlyCharges'] = df['tenure'] * df['MonthlyCharges']
     df['Senior_TechSupport'] = df['SeniorCitizen'].astype(str) + '_' + df['TechSupport'].astype(str)
@@ -29,7 +27,6 @@ def create_advanced_features(df):
     df['MonthlyCharges_group'] = pd.cut(df['MonthlyCharges'], bins=[0, 35, 70, 100, 200], 
                                         labels=['low', 'medium', 'high', 'very_high']).astype(str)
     
-    # 新特征
     df['Payment_Paperless'] = df['PaymentMethod'].astype(str) + '_' + df['PaperlessBilling'].astype(str)
     df['Senior_Phone'] = df['SeniorCitizen'].astype(str) + '_' + df['PhoneService'].astype(str)
     df['tenure_Contract'] = df['tenure_group'] + '_' + df['Contract'].astype(str)
@@ -59,7 +56,6 @@ def create_advanced_features(df):
 
 train_fe = create_advanced_features(train)
 
-# Target Encoding (简化版，只用第一折)
 cat_features = train_fe.select_dtypes(include=['object']).columns.tolist()
 global_mean = y.mean()
 
@@ -76,7 +72,12 @@ for col in cat_features:
 
 train_fe = train_fe.drop(columns=cat_features)
 
-# 训练模型获取特征重要性
+remaining_cat = train_fe.select_dtypes(include=['object']).columns.tolist()
+if remaining_cat:
+    print(f"\n警告: 仍有字符列未处理: {remaining_cat}")
+    train_fe = train_fe.drop(columns=remaining_cat)
+    print(f"已删除这些列")
+
 print("\n训练模型...")
 params = {
     'objective': 'binary',
@@ -94,7 +95,6 @@ params = {
 train_data = lgb.Dataset(train_fe, label=y)
 model = lgb.train(params, train_data, num_boost_round=500)
 
-# 特征重要性
 importance_df = pd.DataFrame({
     'feature': train_fe.columns,
     'importance': model.feature_importance(importance_type='gain')
@@ -106,7 +106,6 @@ print("Top 30 特征重要性")
 print("="*60)
 print(importance_df.head(30).to_string(index=False))
 
-# 标记新特征
 new_features = [
     'Payment_Paperless', 'Senior_Phone', 'tenure_Contract', 
     'charge_intensity', 'actual_months', 'months_diff',
@@ -118,7 +117,6 @@ print("\n" + "="*60)
 print("新特征排名")
 print("="*60)
 for feat in new_features:
-    # 找到包含该特征的所有列（可能有 _te 后缀）
     matching = importance_df[importance_df['feature'].str.contains(feat, regex=False)]
     if len(matching) > 0:
         rank = importance_df.index.get_loc(matching.index[0]) + 1
@@ -127,6 +125,5 @@ for feat in new_features:
     else:
         print(f"{feat:25s}: 未找到")
 
-# 保存完整结果
 importance_df.to_csv('feature_importance_v3.csv', index=False)
 print(f"\n完整特征重要性已保存: feature_importance_v3.csv")

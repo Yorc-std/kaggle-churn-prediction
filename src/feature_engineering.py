@@ -65,7 +65,6 @@ print("\n[1] 服务统计特征...")
 df["service_count"] = (df[SERVICE_COLS] == "Yes").sum(axis=1)
 df["has_internet"] = (df["InternetService"] != "No").astype(int)
 df["has_phone"] = (df["PhoneService"] == "Yes").astype(int)
-df["total_services"] = df["service_count"] + df["has_internet"] + df["has_phone"]
 print(f"  service_count: mean={df['service_count'].mean():.2f}")
 print(f"  has_internet: {df['has_internet'].mean():.2%}")
 
@@ -94,7 +93,7 @@ X_test_transformed["id"] = test_ids.values
 
 print(f"\n变换后特征数: {X_transformed.shape[1] - 2}")
 
-print("\n[4] 保存特征文件...")
+print("\n[3] 保存特征文件...")
 X_transformed.to_csv("data/train_features.csv", index=False)
 X_test_transformed.to_csv("data/test_features.csv", index=False)
 
