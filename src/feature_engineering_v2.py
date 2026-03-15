@@ -230,26 +230,6 @@ df["risk_tenure"] = df["risk_count"] * df["tenure"]
 feature_count += 7
 print(f"  生成 {7} 个多项式与交叉特征")
 
-print("\n[8] 统计排名特征 - 已删除(根据无用特征.txt)")
-
-feature_count += 0
-print(f"  生成 {0} 个统计排名特征")
-
-print("\n[9] 组合分类特征 - 已删除(根据无用特征.txt)")
-
-feature_count += 0
-print(f"  生成 {0} 个组合分类特征")
-
-print("\n[10] 高级数学特征 - 已删除(对树模型无用的线性变换)")
-
-feature_count += 0
-print(f"  生成 {0} 个高级数学特征")
-
-print("\n[11] 时间价值特征 - 已删除(与前面特征高度重复)")
-
-feature_count += 0
-print(f"  生成 {0} 个时间价值特征")
-
 X_transformed = df.iloc[:n_train].copy()
 X_test_transformed = df.iloc[n_train:].copy()
 
