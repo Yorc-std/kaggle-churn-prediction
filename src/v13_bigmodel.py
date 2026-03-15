@@ -334,6 +334,27 @@ elif correlation < 0.7:
 else:
     print("  理想状态: 相关性在0.7-0.85范围, 模型互补性好")
 
+print("\n预测错误分析:")
+xgb_error = (oof_xgb > 0.5) != y.values
+lgb_error = (oof_lgb > 0.5) != y.values
+both_error = (xgb_error & lgb_error).sum()
+only_xgb_error = (xgb_error & ~lgb_error).sum()
+only_lgb_error = (~xgb_error & lgb_error).sum()
+both_correct = (~xgb_error & ~lgb_error).sum()
+total = len(y)
+print(f"  两模型都正确: {both_correct} ({both_correct/total*100:.1f}%)")
+print(f"  两模型都错误: {both_error} ({both_error/total*100:.1f}%)")
+print(f"  仅XGB错误: {only_xgb_error} ({only_xgb_error/total*100:.1f}%)")
+print(f"  仅LGB错误: {only_lgb_error} ({only_lgb_error/total*100:.1f}%)")
+xgb_correct_rate = (~xgb_error).sum() / total * 100
+lgb_correct_rate = (~lgb_error).sum() / total * 100
+print(f"  XGB准确率: {xgb_correct_rate:.2f}%")
+print(f"  LGB准确率: {lgb_correct_rate:.2f}%")
+complementarity = (only_xgb_error + only_lgb_error) / (
+    both_error + only_xgb_error + only_lgb_error + 1e-6
+)
+print(f"  互补性指标: {complementarity:.2%} (单模型错误中可被融合修正的比例)")
+
 print("\n寻找最优融合权重...")
 best_auc = 0
 best_weight = 0.5
