@@ -13,11 +13,11 @@ import glob
 
 warnings.filterwarnings("ignore")
 
-XGB_LR_START = 0.1
+XGB_LR_START = 0.05
 XGB_LR_END = 0.01
 XGB_LR_DECAY_ITER = 3000
 
-LGB_LR_START = 0.1
+LGB_LR_START = 0.05
 LGB_LR_END = 0.01
 LGB_LR_DECAY_ITER = 3000
 
