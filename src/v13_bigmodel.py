@@ -38,7 +38,7 @@ def get_learning_rate(current_iter, lr_start, lr_end, lr_decay_iter, mode="cosin
     return lr
 
 
-def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=10, smoothing=5):
+def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=6, smoothing=5):
     X_train_encoded = X_train.copy()
     X_test_encoded = X_test.copy()
     global_mean = y_train.mean()
@@ -78,7 +78,7 @@ def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=10, smoothing=
     return X_train_encoded, X_test_encoded
 
 
-def precompute_fold_encodings(X, y, X_test, cat_cols, n_splits=10, smoothing=5):
+def precompute_fold_encodings(X, y, X_test, cat_cols, n_splits=6, smoothing=5):
     for old_cache in glob.glob("cache/te_encodings*.pkl"):
         os.remove(old_cache)
         print(f"已删除旧缓存: {old_cache}")
@@ -251,7 +251,7 @@ print(
 
 print("\n预计算Target Encoding...")
 encodings = precompute_fold_encodings(
-    X, y, X_test, ALL_CAT_COLS, n_splits=10, smoothing=5
+    X, y, X_test, ALL_CAT_COLS, n_splits=6, smoothing=5
 )
 
 oof_xgb = np.zeros(len(X))
@@ -259,7 +259,7 @@ oof_lgb = np.zeros(len(X))
 test_xgb = np.zeros(len(X_test))
 test_lgb = np.zeros(len(X_test))
 
-for fold in range(1, 11):
+for fold in range(1, 7):
     print(f"\nFold {fold}")
 
     fold_data = encodings["fold_encodings"][fold]
@@ -315,8 +315,8 @@ for fold in range(1, 11):
 
     X_test_enc = encodings["X_test_enc"]
     dtest = xgb.DMatrix(X_test_enc)
-    test_xgb += xgb_model.predict(dtest) / 10
-    test_lgb += lgb_model.predict(X_test_enc) / 10
+    test_xgb += xgb_model.predict(dtest) / 6
+    test_lgb += lgb_model.predict(X_test_enc) / 6
 
 print("\n模型评估")
 xgb_oof_auc = roc_auc_score(y, oof_xgb)
