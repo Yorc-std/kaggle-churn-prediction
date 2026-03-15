@@ -139,14 +139,10 @@ for col in NUM_COLS:
     df[f"SQRT_{col}"] = np.sqrt(df[col])
     df[f"RANK_{col}"] = df[col].rank(pct=True)
     df[f"SQUARE_{col}"] = df[col] ** 2
-    df[f"CUBE_{col}"] = df[col] ** 3
     df[f"INV_{col}"] = 1.0 / (df[col] + 1)
-    df[f"LOG_{col}"] = np.log(df[col] + 1)
-    df[f"SIN_{col}"] = np.sin(df[f"RANK_{col}"] * np.pi)
-    df[f"COS_{col}"] = np.cos(df[f"RANK_{col}"] * np.pi)
 
-feature_count += len(NUM_COLS) * 10
-print(f"  生成 {len(NUM_COLS) * 10} 个数值变换特征")
+feature_count += len(NUM_COLS) * 6
+print(f"  生成 {len(NUM_COLS) * 6} 个数值变换特征")
 
 print("\n[3] 比例与交互特征")
 

@@ -15,14 +15,14 @@ warnings.filterwarnings("ignore")
 
 XGB_LR_START = 0.05
 XGB_LR_END = 0.01
-XGB_LR_DECAY_ITER = 3000
+XGB_LR_DECAY_ITER = 1000
 
 LGB_LR_START = 0.05
 LGB_LR_END = 0.01
-LGB_LR_DECAY_ITER = 3000
+LGB_LR_DECAY_ITER = 1000
 
-NUM_BOOST_ROUND = 5000
-EARLY_STOPPING_ROUNDS = 300
+NUM_BOOST_ROUND = 3000
+EARLY_STOPPING_ROUNDS = 200
 
 
 def get_learning_rate(current_iter, lr_start, lr_end, lr_decay_iter, mode="cosine"):
@@ -205,38 +205,38 @@ xgb_params = {
     "objective": "binary:logistic",
     "eval_metric": "auc",
     "learning_rate": XGB_LR_START,
-    "max_depth": 7,
-    "min_child_weight": 1,
-    "subsample": 0.85,
-    "colsample_bytree": 0.35,
-    "colsample_bylevel": 0.5,
-    "reg_alpha": 0.1,
-    "reg_lambda": 1.0,
-    "gamma": 0,
+    "max_depth": 4,
+    "min_child_weight": 5,
+    "subsample": 0.7,
+    "colsample_bytree": 0.5,
+    "colsample_bylevel": 0.6,
+    "reg_alpha": 1.0,
+    "reg_lambda": 5.0,
+    "gamma": 0.5,
     "random_state": 42,
     "tree_method": "hist",
     "device": "cuda",
     "n_jobs": -1,
-    "scale_pos_weight": 3.44,
+    "scale_pos_weight": 3.0,
 }
 
 lgb_params = {
     "objective": "binary",
     "metric": "auc",
     "learning_rate": LGB_LR_START,
-    "max_depth": 6,
-    "num_leaves": 63,
-    "min_child_samples": 20,
-    "subsample": 0.85,
-    "colsample_bytree": 0.35,
-    "reg_alpha": 0.1,
-    "reg_lambda": 1.0,
+    "max_depth": 12,
+    "num_leaves": 127,
+    "min_child_samples": 10,
+    "subsample": 0.9,
+    "colsample_bytree": 0.3,
+    "reg_alpha": 0.01,
+    "reg_lambda": 0.1,
     "min_split_gain": 0,
-    "random_state": 42,
+    "random_state": 123,
     "n_jobs": -1,
     "device": "cpu",
     "verbose": -1,
-    "scale_pos_weight": 3.44,
+    "scale_pos_weight": 4.0,
 }
 
 print("\n参数配置:")
