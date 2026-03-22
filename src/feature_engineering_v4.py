@@ -186,11 +186,9 @@ print(f"  生成 6 个费用偏差与比例特征")
 print("\n[4] 分箱特征 (高分Notebook)")
 
 TENURE_BINS = [0, 1, 3, 6, 12, 24, 36, 48, 60, 72, 10000]
-df["tenure_bin"] = (
-    pd.cut(df["tenure"], bins=TENURE_BINS, include_lowest=True)
-    .astype(str)
-    .astype("category")
-)
+df["tenure_bin"] = pd.cut(
+    df["tenure"], bins=TENURE_BINS, include_lowest=True
+).cat.codes.astype("float32")
 
 mc_bins = pd.qcut(
     pd.concat([X["MonthlyCharges"], X_test["MonthlyCharges"]]),
@@ -198,11 +196,9 @@ mc_bins = pd.qcut(
     retbins=True,
     duplicates="drop",
 )[1]
-df["MonthlyCharges_bin"] = (
-    pd.cut(df["MonthlyCharges"], bins=mc_bins, include_lowest=True)
-    .astype(str)
-    .astype("category")
-)
+df["MonthlyCharges_bin"] = pd.cut(
+    df["MonthlyCharges"], bins=mc_bins, include_lowest=True
+).cat.codes.astype("float32")
 
 tc_bins = pd.qcut(
     pd.concat([X["TotalCharges"], X_test["TotalCharges"]]),
@@ -210,11 +206,9 @@ tc_bins = pd.qcut(
     retbins=True,
     duplicates="drop",
 )[1]
-df["TotalCharges_bin"] = (
-    pd.cut(df["TotalCharges"], bins=tc_bins, include_lowest=True)
-    .astype(str)
-    .astype("category")
-)
+df["TotalCharges_bin"] = pd.cut(
+    df["TotalCharges"], bins=tc_bins, include_lowest=True
+).cat.codes.astype("float32")
 
 df["tenure_new"] = (df["tenure"] <= 12).astype(int)
 df["tenure_long"] = (df["tenure"] > 36).astype(int)
@@ -239,7 +233,11 @@ cross_features = []
 for a, b in CROSS_PAIRS:
     if a in df.columns and b in df.columns:
         name = f"{a}__{b}"
-        df[name] = (df[a].astype(str) + "|" + df[b].astype(str)).astype("category")
+        df[name] = (
+            (df[a].astype(str) + "|" + df[b].astype(str))
+            .astype("category")
+            .cat.codes.astype("float32")
+        )
         cross_features.append(name)
 
 TRIPLE = [("Contract", "InternetService", "PaymentMethod")]
@@ -247,8 +245,10 @@ for a, b, c in TRIPLE:
     if a in df.columns and b in df.columns and c in df.columns:
         name = f"{a}__{b}__{c}"
         df[name] = (
-            df[a].astype(str) + "|" + df[b].astype(str) + "|" + df[c].astype(str)
-        ).astype("category")
+            (df[a].astype(str) + "|" + df[b].astype(str) + "|" + df[c].astype(str))
+            .astype("category")
+            .cat.codes.astype("float32")
+        )
         cross_features.append(name)
 
 feature_count += len(cross_features)
@@ -406,7 +406,7 @@ NUM_AS_CAT = []
 for col in NUM_COLS:
     _new = f"CAT_{col}"
     NUM_AS_CAT.append(_new)
-    df[_new] = df[col].astype(str).astype("category")
+    df[_new] = df[col].astype(str).astype("category").cat.codes.astype("float32")
 
 feature_count += len(NUM_AS_CAT)
 print(f"  生成 {len(NUM_AS_CAT)} 个数值类别特征: {NUM_AS_CAT}")
