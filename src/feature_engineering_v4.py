@@ -12,9 +12,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-print("=" * 70)
 print("特征工程 V4 - 整合高分Notebook优秀特征 (优化版)")
-print("=" * 70)
 
 train = pd.read_csv("data/train.csv")
 test = pd.read_csv("data/test.csv")
@@ -32,22 +30,42 @@ print(f"原始IBM数据: {original.shape}")
 print(f"流失率: {y.mean():.4f}")
 
 CAT_COLS = [
-    "gender", "SeniorCitizen", "Partner", "Dependents", "PhoneService",
-    "MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup",
-    "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies",
-    "Contract", "PaperlessBilling", "PaymentMethod",
+    "gender",
+    "SeniorCitizen",
+    "Partner",
+    "Dependents",
+    "PhoneService",
+    "MultipleLines",
+    "InternetService",
+    "OnlineSecurity",
+    "OnlineBackup",
+    "DeviceProtection",
+    "TechSupport",
+    "StreamingTV",
+    "StreamingMovies",
+    "Contract",
+    "PaperlessBilling",
+    "PaymentMethod",
 ]
 
 NUM_COLS = ["tenure", "MonthlyCharges", "TotalCharges"]
 
 SERVICE_COLS = [
-    "PhoneService", "MultipleLines", "OnlineSecurity", "OnlineBackup",
-    "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies",
+    "PhoneService",
+    "MultipleLines",
+    "OnlineSecurity",
+    "OnlineBackup",
+    "DeviceProtection",
+    "TechSupport",
+    "StreamingTV",
+    "StreamingMovies",
 ]
 
 original["Churn"] = original["Churn"].map({"Yes": 1, "No": 0})
 original["TotalCharges"] = pd.to_numeric(original["TotalCharges"], errors="coerce")
-original["TotalCharges"] = original["TotalCharges"].fillna(original["TotalCharges"].median())
+original["TotalCharges"] = original["TotalCharges"].fillna(
+    original["TotalCharges"].median()
+)
 if "customerID" in original.columns:
     original.drop(columns=["customerID"], inplace=True)
 
@@ -59,13 +77,15 @@ df["TotalCharges"] = df["TotalCharges"].fillna(0)
 
 feature_count = 0
 
-print("\n" + "=" * 70)
-print("[1] 服务统计特征 (来自高分Notebook)")
-print("=" * 70)
+print("\n[1] 服务统计特征 (来自高分Notebook)")
 
 df["service_yes_count"] = (df[SERVICE_COLS] == "Yes").sum(axis=1).astype("float32")
 df["service_no_count"] = (df[SERVICE_COLS] == "No").sum(axis=1).astype("float32")
-df["service_other_count"] = (df[SERVICE_COLS].isin(["No phone service", "No internet service"])).sum(axis=1).astype("float32")
+df["service_other_count"] = (
+    (df[SERVICE_COLS].isin(["No phone service", "No internet service"]))
+    .sum(axis=1)
+    .astype("float32")
+)
 df["has_internet"] = (df["InternetService"] != "No").astype("float32")
 df["has_phone"] = (df["PhoneService"] == "Yes").astype("float32")
 
@@ -73,35 +93,57 @@ df["has_partner"] = (df["Partner"] == "Yes").astype(int)
 df["has_dependents"] = (df["Dependents"] == "Yes").astype(int)
 df["paperless"] = (df["PaperlessBilling"] == "Yes").astype(int)
 
-df["streaming_count"] = ((df["StreamingTV"] == "Yes") | (df["StreamingMovies"] == "Yes")).astype(int)
-df["streaming_both"] = ((df["StreamingTV"] == "Yes") & (df["StreamingMovies"] == "Yes")).astype(int)
+df["streaming_count"] = (
+    (df["StreamingTV"] == "Yes") | (df["StreamingMovies"] == "Yes")
+).astype(int)
+df["streaming_both"] = (
+    (df["StreamingTV"] == "Yes") & (df["StreamingMovies"] == "Yes")
+).astype(int)
 
 df["security_count"] = (
-    (df["OnlineSecurity"] == "Yes") | (df["OnlineBackup"] == "Yes") |
-    (df["DeviceProtection"] == "Yes") | (df["TechSupport"] == "Yes")
+    (df["OnlineSecurity"] == "Yes")
+    | (df["OnlineBackup"] == "Yes")
+    | (df["DeviceProtection"] == "Yes")
+    | (df["TechSupport"] == "Yes")
 ).astype(int)
 df["security_all"] = (
-    (df["OnlineSecurity"] == "Yes") & (df["OnlineBackup"] == "Yes") &
-    (df["DeviceProtection"] == "Yes") & (df["TechSupport"] == "Yes")
+    (df["OnlineSecurity"] == "Yes")
+    & (df["OnlineBackup"] == "Yes")
+    & (df["DeviceProtection"] == "Yes")
+    & (df["TechSupport"] == "Yes")
 ).astype(int)
 
-df["support_services"] = ((df["OnlineSecurity"] == "Yes") + (df["TechSupport"] == "Yes")).astype(int)
-df["backup_services"] = ((df["OnlineBackup"] == "Yes") + (df["DeviceProtection"] == "Yes")).astype(int)
+df["support_services"] = (
+    (df["OnlineSecurity"] == "Yes") + (df["TechSupport"] == "Yes")
+).astype(int)
+df["backup_services"] = (
+    (df["OnlineBackup"] == "Yes") + (df["DeviceProtection"] == "Yes")
+).astype(int)
 
 df["service_diversity"] = (df["service_yes_count"] / 6.0).astype("float32")
-df["internet_service_type"] = df["InternetService"].map({"No": 0, "DSL": 1, "Fiber optic": 2}).fillna(0)
-df["contract_type"] = df["Contract"].map({"Month-to-month": 0, "One year": 1, "Two year": 2}).fillna(0)
-df["payment_type"] = df["PaymentMethod"].map({
-    "Electronic check": 0, "Mailed check": 1,
-    "Bank transfer (automatic)": 2, "Credit card (automatic)": 3
-}).fillna(0)
+df["internet_service_type"] = (
+    df["InternetService"].map({"No": 0, "DSL": 1, "Fiber optic": 2}).fillna(0)
+)
+df["contract_type"] = (
+    df["Contract"].map({"Month-to-month": 0, "One year": 1, "Two year": 2}).fillna(0)
+)
+df["payment_type"] = (
+    df["PaymentMethod"]
+    .map(
+        {
+            "Electronic check": 0,
+            "Mailed check": 1,
+            "Bank transfer (automatic)": 2,
+            "Credit card (automatic)": 3,
+        }
+    )
+    .fillna(0)
+)
 
 feature_count += 17
 print(f"  生成 17 个服务统计特征")
 
-print("\n" + "=" * 70)
-print("[2] 数值变换特征 (频率/排名/数学变换)")
-print("=" * 70)
+print("\n[2] 数值变换特征 (频率/排名/数学变换)")
 
 for col in NUM_COLS:
     freq = pd.concat([X[col], X_test[col]]).value_counts(normalize=True)
@@ -121,32 +163,58 @@ for col in NUM_COLS:
 feature_count += 15
 print(f"  生成 15 个数值变换特征")
 
-print("\n" + "=" * 70)
-print("[3] 费用偏差与比例特征 (高分Notebook核心特征)")
-print("=" * 70)
+print("\n[3] 费用偏差与比例特征 (高分Notebook核心特征)")
 
-df["charges_deviation"] = (df["TotalCharges"] - df["tenure"] * df["MonthlyCharges"]).astype("float32")
+df["charges_deviation"] = (
+    df["TotalCharges"] - df["tenure"] * df["MonthlyCharges"]
+).astype("float32")
 df["abs_charges_dev"] = np.abs(df["charges_deviation"]).astype("float32")
-df["monthly_to_total_ratio"] = (df["MonthlyCharges"] / (df["TotalCharges"] + 1)).astype("float32")
+df["monthly_to_total_ratio"] = (df["MonthlyCharges"] / (df["TotalCharges"] + 1)).astype(
+    "float32"
+)
 df["avg_monthly_charges"] = (df["TotalCharges"] / (df["tenure"] + 1)).astype("float32")
-df["charges_per_service"] = (df["MonthlyCharges"] / (df["service_yes_count"] + 1)).astype("float32")
-df["monthly_per_internet"] = (df["MonthlyCharges"] / (df["has_internet"] + 1)).astype("float32")
+df["charges_per_service"] = (
+    df["MonthlyCharges"] / (df["service_yes_count"] + 1)
+).astype("float32")
+df["monthly_per_internet"] = (df["MonthlyCharges"] / (df["has_internet"] + 1)).astype(
+    "float32"
+)
 
 feature_count += 6
 print(f"  生成 6 个费用偏差与比例特征")
 
-print("\n" + "=" * 70)
-print("[4] 分箱特征 (高分Notebook)")
-print("=" * 70)
+print("\n[4] 分箱特征 (高分Notebook)")
 
 TENURE_BINS = [0, 1, 3, 6, 12, 24, 36, 48, 60, 72, 10000]
-df["tenure_bin"] = pd.cut(df["tenure"], bins=TENURE_BINS, include_lowest=True).astype(str).astype("category")
+df["tenure_bin"] = (
+    pd.cut(df["tenure"], bins=TENURE_BINS, include_lowest=True)
+    .astype(str)
+    .astype("category")
+)
 
-mc_bins = pd.qcut(pd.concat([X["MonthlyCharges"], X_test["MonthlyCharges"]]), q=40, retbins=True, duplicates="drop")[1]
-df["MonthlyCharges_bin"] = pd.cut(df["MonthlyCharges"], bins=mc_bins, include_lowest=True).astype(str).astype("category")
+mc_bins = pd.qcut(
+    pd.concat([X["MonthlyCharges"], X_test["MonthlyCharges"]]),
+    q=40,
+    retbins=True,
+    duplicates="drop",
+)[1]
+df["MonthlyCharges_bin"] = (
+    pd.cut(df["MonthlyCharges"], bins=mc_bins, include_lowest=True)
+    .astype(str)
+    .astype("category")
+)
 
-tc_bins = pd.qcut(pd.concat([X["TotalCharges"], X_test["TotalCharges"]]), q=60, retbins=True, duplicates="drop")[1]
-df["TotalCharges_bin"] = pd.cut(df["TotalCharges"], bins=tc_bins, include_lowest=True).astype(str).astype("category")
+tc_bins = pd.qcut(
+    pd.concat([X["TotalCharges"], X_test["TotalCharges"]]),
+    q=60,
+    retbins=True,
+    duplicates="drop",
+)[1]
+df["TotalCharges_bin"] = (
+    pd.cut(df["TotalCharges"], bins=tc_bins, include_lowest=True)
+    .astype(str)
+    .astype("category")
+)
 
 df["tenure_new"] = (df["tenure"] <= 12).astype(int)
 df["tenure_long"] = (df["tenure"] > 36).astype(int)
@@ -156,9 +224,7 @@ df["total_high"] = (df["TotalCharges"] > 4000).astype(int)
 feature_count += 7
 print(f"  生成 7 个分箱特征")
 
-print("\n" + "=" * 70)
-print("[5] 交叉特征 (高分Notebook核心)")
-print("=" * 70)
+print("\n[5] 交叉特征 (高分Notebook核心)")
 
 CROSS_PAIRS = [
     ("Contract", "InternetService"),
@@ -180,20 +246,28 @@ TRIPLE = [("Contract", "InternetService", "PaymentMethod")]
 for a, b, c in TRIPLE:
     if a in df.columns and b in df.columns and c in df.columns:
         name = f"{a}__{b}__{c}"
-        df[name] = (df[a].astype(str) + "|" + df[b].astype(str) + "|" + df[c].astype(str)).astype("category")
+        df[name] = (
+            df[a].astype(str) + "|" + df[b].astype(str) + "|" + df[c].astype(str)
+        ).astype("category")
         cross_features.append(name)
 
 feature_count += len(cross_features)
 print(f"  生成 {len(cross_features)} 个交叉特征: {cross_features}")
 
-print("\n" + "=" * 70)
-print("[6] ISYES二值化特征 (只保留ISYES，避免冗余)")
-print("=" * 70)
+print("\n[6] ISYES二值化特征 (只保留ISYES，避免冗余)")
 
 YN_COLS = [
-    "Partner", "Dependents", "PhoneService", "PaperlessBilling",
-    "OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport",
-    "StreamingTV", "StreamingMovies", "MultipleLines",
+    "Partner",
+    "Dependents",
+    "PhoneService",
+    "PaperlessBilling",
+    "OnlineSecurity",
+    "OnlineBackup",
+    "DeviceProtection",
+    "TechSupport",
+    "StreamingTV",
+    "StreamingMovies",
+    "MultipleLines",
 ]
 
 isyes_features = []
@@ -206,9 +280,7 @@ for c in YN_COLS:
 feature_count += len(isyes_features)
 print(f"  生成 {len(isyes_features)} 个ISYES特征")
 
-print("\n" + "=" * 70)
-print("[7] 类别计数和稀有度特征")
-print("=" * 70)
+print("\n[7] 类别计数和稀有度特征")
 
 ALL_CATS_FOR_COUNT = CAT_COLS + cross_features
 
@@ -223,9 +295,7 @@ for c in ALL_CATS_FOR_COUNT:
 feature_count += len(cat_count_features)
 print(f"  生成 {len(cat_count_features)} 个类别计数特征")
 
-print("\n" + "=" * 70)
-print("[8] 原始数据目标编码特征 (核心)")
-print("=" * 70)
+print("\n[8] 原始数据目标编码特征 (核心)")
 
 orig_proba_features = []
 for col in CAT_COLS + NUM_COLS:
@@ -237,18 +307,22 @@ for col in CAT_COLS + NUM_COLS:
 feature_count += len(orig_proba_features)
 print(f"  生成 {len(orig_proba_features)} 个原始数据目标编码特征")
 
-print("\n" + "=" * 70)
-print("[9] 百分位排名特征 (RealMLP Notebook)")
-print("=" * 70)
+print("\n[9] 百分位排名特征 (RealMLP Notebook)")
+
 
 def pctrank_against(values, reference):
     ref_sorted = np.sort(reference)
-    return (np.searchsorted(ref_sorted, values) / len(ref_sorted)).astype('float32')
+    return (np.searchsorted(ref_sorted, values) / len(ref_sorted)).astype("float32")
+
 
 def zscore_against(values, reference):
     mu, sigma = np.mean(reference), np.std(reference)
-    return (np.zeros(len(values), dtype='float32') if sigma == 0 
-            else ((values - mu) / sigma).astype('float32'))
+    return (
+        np.zeros(len(values), dtype="float32")
+        if sigma == 0
+        else ((values - mu) / sigma).astype("float32")
+    )
+
 
 orig_churner_tc = original.loc[original["Churn"] == 1, "TotalCharges"].values
 orig_nonchurner_tc = original.loc[original["Churn"] == 0, "TotalCharges"].values
@@ -258,25 +332,28 @@ tc = df["TotalCharges"].values
 df["_pctrank_nonchurner_TC"] = pctrank_against(tc, orig_nonchurner_tc)
 df["_pctrank_churner_TC"] = pctrank_against(tc, orig_churner_tc)
 df["_pctrank_orig_TC"] = pctrank_against(tc, orig_tc)
-df["_zscore_churn_gap_TC"] = (np.abs(zscore_against(tc, orig_churner_tc)) - 
-                              np.abs(zscore_against(tc, orig_nonchurner_tc))).astype('float32')
+df["_zscore_churn_gap_TC"] = (
+    np.abs(zscore_against(tc, orig_churner_tc))
+    - np.abs(zscore_against(tc, orig_nonchurner_tc))
+).astype("float32")
 df["_zscore_nonchurner_TC"] = zscore_against(tc, orig_nonchurner_tc)
-df["_pctrank_churn_gap_TC"] = (pctrank_against(tc, orig_churner_tc) - 
-                               pctrank_against(tc, orig_nonchurner_tc)).astype('float32')
+df["_pctrank_churn_gap_TC"] = (
+    pctrank_against(tc, orig_churner_tc) - pctrank_against(tc, orig_nonchurner_tc)
+).astype("float32")
 
-for q_label, q_val in [('q25', 0.25), ('q50', 0.50), ('q75', 0.75)]:
+for q_label, q_val in [("q25", 0.25), ("q50", 0.50), ("q75", 0.75)]:
     ch_q = np.quantile(orig_churner_tc, q_val)
     nc_q = np.quantile(orig_nonchurner_tc, q_val)
-    df[f"_dist_To_ch_{q_label}"] = np.abs(df["TotalCharges"] - ch_q).astype('float32')
-    df[f"_dist_To_nc_{q_label}"] = np.abs(df["TotalCharges"] - nc_q).astype('float32')
-    df[f"_qdist_gap_To_{q_label}"] = (df[f"_dist_To_nc_{q_label}"] - df[f"_dist_To_ch_{q_label}"]).astype('float32')
+    df[f"_dist_To_ch_{q_label}"] = np.abs(df["TotalCharges"] - ch_q).astype("float32")
+    df[f"_dist_To_nc_{q_label}"] = np.abs(df["TotalCharges"] - nc_q).astype("float32")
+    df[f"_qdist_gap_To_{q_label}"] = (
+        df[f"_dist_To_nc_{q_label}"] - df[f"_dist_To_ch_{q_label}"]
+    ).astype("float32")
 
 feature_count += 15
 print(f"  生成 15 个百分位排名特征")
 
-print("\n" + "=" * 70)
-print("[10] 风险因子特征")
-print("=" * 70)
+print("\n[10] 风险因子特征")
 
 df["risk_month_to_month"] = (df["Contract"] == "Month-to-month").astype(int)
 df["risk_fiber_optic"] = (df["InternetService"] == "Fiber optic").astype(int)
@@ -286,27 +363,31 @@ df["risk_count"] = (
     df["risk_month_to_month"] + df["risk_fiber_optic"] + df["risk_electronic_check"]
 )
 
-df["risk_high_tenure"] = ((df["tenure"] <= 12) & (df["Contract"] == "Month-to-month")).astype(int)
-df["risk_no_security"] = ((df["OnlineSecurity"] == "No") & (df["has_internet"] == 1)).astype(int)
+df["risk_high_tenure"] = (
+    (df["tenure"] <= 12) & (df["Contract"] == "Month-to-month")
+).astype(int)
+df["risk_no_security"] = (
+    (df["OnlineSecurity"] == "No") & (df["has_internet"] == 1)
+).astype(int)
 
 df["protection_score"] = (
-    (df["OnlineSecurity"] == "Yes").astype(int) +
-    (df["OnlineBackup"] == "Yes").astype(int) +
-    (df["DeviceProtection"] == "Yes").astype(int) +
-    (df["TechSupport"] == "Yes").astype(int)
+    (df["OnlineSecurity"] == "Yes").astype(int)
+    + (df["OnlineBackup"] == "Yes").astype(int)
+    + (df["DeviceProtection"] == "Yes").astype(int)
+    + (df["TechSupport"] == "Yes").astype(int)
 )
 
 df["loyalty_score"] = df["contract_type"] * 10 + df["tenure"] / 6.0
 
-df["fiber_no_support"] = ((df["InternetService"] == "Fiber optic") & (df["TechSupport"] == "No")).astype(int)
+df["fiber_no_support"] = (
+    (df["InternetService"] == "Fiber optic") & (df["TechSupport"] == "No")
+).astype(int)
 df["is_new_customer"] = (df["tenure"] <= 6).astype(int)
 
 feature_count += 11
 print(f"  生成 11 个风险因子特征")
 
-print("\n" + "=" * 70)
-print("[11] 多项式与交叉特征")
-print("=" * 70)
+print("\n[11] 多项式与交叉特征")
 
 df["contract_tenure"] = df["contract_type"] * df["tenure"]
 df["contract_monthly"] = df["contract_type"] * df["MonthlyCharges"]
@@ -319,9 +400,7 @@ df["risk_tenure"] = df["risk_count"] * df["tenure"]
 feature_count += 7
 print(f"  生成 7 个多项式与交叉特征")
 
-print("\n" + "=" * 70)
-print("[12] 数值列作为类别")
-print("=" * 70)
+print("\n[12] 数值列作为类别")
 
 NUM_AS_CAT = []
 for col in NUM_COLS:
@@ -341,9 +420,7 @@ X_test_transformed["id"] = test_ids.values
 
 final_feature_count = X_transformed.shape[1] - 2
 
-print("\n" + "=" * 70)
-print("特征工程汇总")
-print("=" * 70)
+print("\n特征工程汇总")
 print(f"原始特征数: {X.shape[1]}")
 print(f"新增特征数: {feature_count}")
 print(f"最终特征数: {final_feature_count}")
@@ -357,9 +434,7 @@ X_test_transformed.to_csv("data/test_features_v4.csv", index=False)
 print(f"  训练集特征: data/train_features_v4.csv")
 print(f"  测试集特征: data/test_features_v4.csv")
 
-print("\n" + "=" * 70)
-print("特征工程V4完成!")
-print("=" * 70)
+print("\n特征工程V4完成!")
 print("\n优化说明:")
 
 print("\n接下来运行训练脚本:")

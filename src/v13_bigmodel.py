@@ -169,8 +169,8 @@ def lgb_learning_rate_callback(env):
 print("V13: LightGBM + XGBoost Ensemble (双重信号理论优化)")
 
 print("\n加载预处理特征...")
-train = pd.read_csv("data/train_features_v2.csv")
-test = pd.read_csv("data/test_features_v2.csv")
+train = pd.read_csv("data/train_features_v4.csv")
+test = pd.read_csv("data/test_features_v4.csv")
 
 y = train["Churn"]
 test_ids = test["id"]
