@@ -180,8 +180,17 @@ df["monthly_per_internet"] = (df["MonthlyCharges"] / (df["has_internet"] + 1)).a
     "float32"
 )
 
-feature_count += 6
-print(f"  生成 6 个费用偏差与比例特征")
+df["is_first_month"] = (df["tenure"] == 1).astype("float32")
+df["dev_is_zero"] = (df["charges_deviation"] == 0).astype("float32")
+df["dev_sign"] = np.sign(df["charges_deviation"]).astype("float32")
+df["total_to_monthly_ratio"] = (df["TotalCharges"] / (df["MonthlyCharges"] + 1)).astype(
+    "float32"
+)
+df["tenure_x_monthly"] = (df["tenure"] * df["MonthlyCharges"]).astype("float32")
+df["tenure_x_total"] = (df["tenure"] * df["TotalCharges"]).astype("float32")
+
+feature_count += 12
+print(f"  生成 12 个费用偏差与比例特征")
 
 print("\n[4] 分箱特征 (高分Notebook)")
 
@@ -218,7 +227,34 @@ df["total_high"] = (df["TotalCharges"] > 4000).astype(int)
 feature_count += 7
 print(f"  生成 7 个分箱特征")
 
-print("\n[5] 交叉特征 (高分Notebook核心)")
+print("\n[5] 数字/模数特征 (来自0.919 Notebook - 关键发现)")
+
+df["tenure_mod10"] = (df["tenure"] % 10).astype("float32")
+df["tenure_mod12"] = (df["tenure"] % 12).astype("float32")
+df["tenure_years"] = (df["tenure"] // 12).astype("float32")
+df["tenure_is_multiple_12"] = ((df["tenure"] % 12) == 0).astype("float32")
+df["tenure_first_digit"] = (
+    df["tenure"].astype(str).str[0].astype(float).astype("float32")
+)
+df["tenure_last_digit"] = (
+    df["tenure"].astype(str).str[-1].astype(float).astype("float32")
+)
+
+mc = df["MonthlyCharges"].values
+df["mc_fractional"] = (mc - np.floor(mc)).astype("float32")
+df["mc_rounded_10"] = (np.round(mc / 10) * 10).astype("float32")
+df["mc_dev_from_round10"] = np.abs(mc - df["mc_rounded_10"]).astype("float32")
+df["mc_is_multiple_10"] = ((np.floor(mc) % 10) == 0).astype("float32")
+
+tc = df["TotalCharges"].values
+df["tc_fractional"] = (tc - np.floor(tc)).astype("float32")
+df["tc_rounded_100"] = (np.round(tc / 100) * 100).astype("float32")
+df["tc_is_multiple_100"] = ((np.floor(tc) % 100) == 0).astype("float32")
+
+feature_count += 14
+print(f"  生成 14 个数字/模数特征")
+
+print("\n[6] 交叉特征 (高分Notebook核心)")
 
 CROSS_PAIRS = [
     ("Contract", "InternetService"),
@@ -254,7 +290,7 @@ for a, b, c in TRIPLE:
 feature_count += len(cross_features)
 print(f"  生成 {len(cross_features)} 个交叉特征: {cross_features}")
 
-print("\n[6] ISYES二值化特征 (只保留ISYES，避免冗余)")
+print("\n[7] ISYES/ISNO/ISOTHER二值化特征")
 
 YN_COLS = [
     "Partner",
@@ -271,16 +307,24 @@ YN_COLS = [
 ]
 
 isyes_features = []
+isno_features = []
+isother_features = []
 for c in YN_COLS:
     if c in df.columns:
         s = df[c].astype(str)
         df[f"ISYES_{c}"] = (s == "Yes").astype("float32")
+        df[f"ISNO_{c}"] = (s == "No").astype("float32")
+        df[f"ISOTHER_{c}"] = (~s.isin(["Yes", "No"])).astype("float32")
         isyes_features.append(f"ISYES_{c}")
+        isno_features.append(f"ISNO_{c}")
+        isother_features.append(f"ISOTHER_{c}")
 
-feature_count += len(isyes_features)
+feature_count += len(isyes_features) + len(isno_features) + len(isother_features)
 print(f"  生成 {len(isyes_features)} 个ISYES特征")
+print(f"  生成 {len(isno_features)} 个ISNO特征")
+print(f"  生成 {len(isother_features)} 个ISOTHER特征")
 
-print("\n[7] 类别计数和稀有度特征")
+print("\n[8] 类别计数和稀有度特征")
 
 ALL_CATS_FOR_COUNT = CAT_COLS + cross_features
 
@@ -295,7 +339,7 @@ for c in ALL_CATS_FOR_COUNT:
 feature_count += len(cat_count_features)
 print(f"  生成 {len(cat_count_features)} 个类别计数特征")
 
-print("\n[8] 原始数据目标编码特征 (核心)")
+print("\n[9] 原始数据目标编码特征 (核心)")
 
 orig_proba_features = []
 for col in CAT_COLS + NUM_COLS:
@@ -307,7 +351,12 @@ for col in CAT_COLS + NUM_COLS:
 feature_count += len(orig_proba_features)
 print(f"  生成 {len(orig_proba_features)} 个原始数据目标编码特征")
 
-print("\n[9] 百分位排名特征 (RealMLP Notebook)")
+print("\n[10] ORIG_proba交叉特征 - 已移除 (原始数据无交互效应)")
+print("  原因: original.csv是IBM合成数据，特征完全独立")
+print("  train.csv基于original再合成，有交互效应，交叉编码会引入错误信息")
+orig_proba_cross_features = []
+
+print("\n[11] 百分位排名特征 (RealMLP Notebook)")
 
 
 def pctrank_against(values, reference):
@@ -353,7 +402,28 @@ for q_label, q_val in [("q25", 0.25), ("q50", 0.50), ("q75", 0.75)]:
 feature_count += 15
 print(f"  生成 15 个百分位排名特征")
 
-print("\n[10] 风险因子特征")
+print("\n[12] 条件百分位排名特征 (按InternetService分组)")
+
+cond_pctrank_features = []
+for is_val in df["InternetService"].unique():
+    mask = df["InternetService"] == is_val
+    ref = original.loc[original["InternetService"] == is_val, "TotalCharges"].values
+    if len(ref) > 0:
+        df.loc[mask, f"cond_pctrank_TC_IS_{is_val}"] = pctrank_against(
+            df.loc[mask, "TotalCharges"].values, ref
+        )
+        cond_pctrank_features.append(f"cond_pctrank_TC_IS_{is_val}")
+
+orig_is_mc_mean = original.groupby("InternetService")["MonthlyCharges"].mean()
+df["resid_IS_MC"] = (
+    df["MonthlyCharges"] - df["InternetService"].map(orig_is_mc_mean).fillna(0)
+).astype("float32")
+cond_pctrank_features.append("resid_IS_MC")
+
+feature_count += len(cond_pctrank_features)
+print(f"  生成 {len(cond_pctrank_features)} 个条件百分位排名特征")
+
+print("\n[13] 风险因子特征")
 
 df["risk_month_to_month"] = (df["Contract"] == "Month-to-month").astype(int)
 df["risk_fiber_optic"] = (df["InternetService"] == "Fiber optic").astype(int)
@@ -387,7 +457,7 @@ df["is_new_customer"] = (df["tenure"] <= 6).astype(int)
 feature_count += 11
 print(f"  生成 11 个风险因子特征")
 
-print("\n[11] 多项式与交叉特征")
+print("\n[14] 多项式与交叉特征")
 
 df["contract_tenure"] = df["contract_type"] * df["tenure"]
 df["contract_monthly"] = df["contract_type"] * df["MonthlyCharges"]
@@ -400,7 +470,7 @@ df["risk_tenure"] = df["risk_count"] * df["tenure"]
 feature_count += 7
 print(f"  生成 7 个多项式与交叉特征")
 
-print("\n[12] 数值列作为类别")
+print("\n[15] 数值列作为类别")
 
 NUM_AS_CAT = []
 for col in NUM_COLS:
@@ -410,6 +480,21 @@ for col in NUM_COLS:
 
 feature_count += len(NUM_AS_CAT)
 print(f"  生成 {len(NUM_AS_CAT)} 个数值类别特征: {NUM_AS_CAT}")
+
+print("\n[16] 缺失值标记和平方特征")
+
+missing_features = []
+for col in NUM_COLS:
+    df[f"MISS_{col}"] = pd.to_numeric(df[col], errors="coerce").isna().astype("int8")
+    missing_features.append(f"MISS_{col}")
+
+df["tenure_sq"] = (df["tenure"] ** 2).astype("float32")
+df["MonthlyCharges_sq"] = (df["MonthlyCharges"] ** 2).astype("float32")
+df["TotalCharges_sq"] = (df["TotalCharges"] ** 2).astype("float32")
+
+feature_count += len(missing_features) + 3
+print(f"  生成 {len(missing_features)} 个缺失值标记特征")
+print(f"  生成 3 个平方特征")
 
 X_transformed = df.iloc[:n_train].copy()
 X_test_transformed = df.iloc[n_train:].copy()
@@ -427,7 +512,7 @@ print(f"最终特征数: {final_feature_count}")
 print(f"训练集形状: {X_transformed.shape}")
 print(f"测试集形状: {X_test_transformed.shape}")
 
-print("\n[13] 保存特征文件...")
+print("\n[17] 保存特征文件...")
 X_transformed.to_csv("data/train_features_v4.csv", index=False)
 X_test_transformed.to_csv("data/test_features_v4.csv", index=False)
 
