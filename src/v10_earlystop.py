@@ -1,12 +1,14 @@
 """
-V9: LightGBM + XGBoost 双模型融合 + 服务统计特征
+V10: LightGBM + XGBoost 双模型融合 + 服务统计特征 + 早停机制(5轮)
 - 加载预处理特征 (train_features.csv, test_features.csv)
 - Target Encoding (在CV内部进行，避免数据泄露)
 - 双模型加权融合
+- 早停机制: 5轮无提升则停止
+- 动态学习率: 从0.1衰减到0.001
 
 使用方法:
   1. 先运行 python src/feature_engineering.py 生成特征文件
-  2. 再运行 python src/v9_ensemble.py 进行模型训练
+  2. 再运行 python src/v10_ensemble.py 进行模型训练
 """
 
 import pandas as pd
@@ -18,8 +20,39 @@ import lightgbm as lgb
 import warnings
 import os
 from contextlib import contextmanager
+import math
 
 warnings.filterwarnings("ignore")
+
+LR_START = 0.1
+LR_END = 0.001
+LR_DECAY_ITER = 300
+NUM_BOOST_ROUND = 1000
+
+
+def get_learning_rate(
+    current_iter,
+    lr_start=LR_START,
+    lr_end=LR_END,
+    lr_decay_iter=LR_DECAY_ITER,
+    mode="linear",
+):
+    """
+    动态学习率调度器
+    mode: "cosine" - 余弦退火, "linear" - 线性衰减, "exp" - 指数衰减
+    """
+    progress = min(current_iter / lr_decay_iter, 1.0)
+
+    if mode == "cosine":
+        lr = lr_end + 0.5 * (lr_start - lr_end) * (1 + math.cos(math.pi * progress))
+    elif mode == "linear":
+        lr = lr_start - (lr_start - lr_end) * progress
+    elif mode == "exp":
+        lr = lr_start * (lr_end / lr_start) ** progress
+    else:
+        lr = lr_start
+
+    return lr
 
 
 @contextmanager
@@ -34,7 +67,7 @@ def suppress_gpu_warnings():
         devnull.close()
 
 
-print("V9: LightGBM + XGBoost Ensemble")
+print("V10: LightGBM + XGBoost Ensemble (Early Stopping: 5 rounds)")
 
 print("\n加载预处理特征...")
 train = pd.read_csv("data/train_features.csv")
@@ -78,7 +111,7 @@ CROSS_COLS = [
 ALL_CAT_COLS = CAT_COLS + CROSS_COLS
 
 
-def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=5, smoothing=5):
+def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=10, smoothing=5):
     """CV 内 Target Encoding，避免 leakage"""
     X_train_encoded = X_train.copy()
     X_test_encoded = X_test.copy()
@@ -125,7 +158,7 @@ def target_encode_cv(X_train, y_train, X_test, cat_cols, n_splits=5, smoothing=5
 
 
 print("\n模型训练")
-skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
 
 oof_xgb = np.zeros(len(X))
 oof_lgb = np.zeros(len(X))
@@ -135,7 +168,7 @@ test_lgb = np.zeros(len(X_test))
 xgb_params = {
     "objective": "binary:logistic",
     "eval_metric": "auc",
-    "learning_rate": 0.01,
+    "learning_rate": LR_START,
     "max_depth": 6,
     "min_child_weight": 1,
     "subsample": 0.8,
@@ -151,7 +184,7 @@ xgb_params = {
 lgb_params = {
     "objective": "binary",
     "metric": "auc",
-    "learning_rate": 0.01,
+    "learning_rate": LR_START,
     "max_depth": 6,
     "num_leaves": 31,
     "min_child_samples": 20,
@@ -161,22 +194,55 @@ lgb_params = {
     "reg_lambda": 1.0,
     "random_state": 42,
     "n_jobs": -1,
-    "device": "gpu",
+    "device": "cpu",
     "verbose": -1,
 }
 
+EARLY_STOPPING_ROUNDS = 50
+
+
+class XgbLearningRateCallback(xgb.callback.TrainingCallback):
+    """XGBoost 学习率回调函数"""
+
+    def __init__(
+        self,
+        lr_start=LR_START,
+        lr_end=LR_END,
+        lr_decay_iter=LR_DECAY_ITER,
+        mode="linear",
+    ):
+        self.lr_start = lr_start
+        self.lr_end = lr_end
+        self.lr_decay_iter = lr_decay_iter
+        self.mode = mode
+
+    def after_iteration(self, model, epoch, evals_log):
+        new_lr = get_learning_rate(
+            epoch, self.lr_start, self.lr_end, self.lr_decay_iter, self.mode
+        )
+        model.set_param("learning_rate", new_lr)
+        if epoch % 100 == 0:
+            print(f"    [Iter {epoch}] LR: {new_lr:.6f}")
+        return False
+
+
+def lgb_learning_rate_callback(env):
+    """LightGBM 学习率回调函数"""
+    new_lr = get_learning_rate(env.iteration, mode="linear")
+    env.model.params["learning_rate"] = new_lr
+    if env.iteration % 100 == 0:
+        print(f"    [Iter {env.iteration}] LR: {new_lr:.6f}")
+
+
 for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
-    print(f"\nFold {fold}/5")
+    print(f"\nFold {fold}")
 
     X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
     y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
     X_tr_enc, X_val_enc = target_encode_cv(
-        X_tr, y_tr, X_val, ALL_CAT_COLS, n_splits=5, smoothing=5
+        X_tr, y_tr, X_val, ALL_CAT_COLS, n_splits=10, smoothing=5
     )
-
-    print(f"编码后特征数: {X_tr_enc.shape[1]}")
-
     print("  [XGBoost] 训练中...")
     dtrain = xgb.DMatrix(X_tr_enc, label=y_tr)
     dval = xgb.DMatrix(X_val_enc, label=y_val)
@@ -184,10 +250,15 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
     xgb_model = xgb.train(
         xgb_params,
         dtrain,
-        num_boost_round=10000,
+        num_boost_round=NUM_BOOST_ROUND,
         evals=[(dval, "val")],
-        early_stopping_rounds=200,
-        verbose_eval=False,
+        early_stopping_rounds=EARLY_STOPPING_ROUNDS,
+        verbose_eval=100,
+        custom_metric=lambda pred, dtrain: (
+            "auc",
+            roc_auc_score(dtrain.get_label(), pred),
+        ),
+        callbacks=[XgbLearningRateCallback()],
     )
 
     oof_xgb[val_idx] = xgb_model.predict(dval)
@@ -203,10 +274,12 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
     lgb_model = lgb.train(
         lgb_params,
         lgb_train,
-        num_boost_round=10000,
+        num_boost_round=NUM_BOOST_ROUND,
         valid_sets=[lgb_val],
         callbacks=[
-            lgb.early_stopping(stopping_rounds=200, verbose=False),
+            lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=True),
+            lgb.log_evaluation(period=500),
+            lgb_learning_rate_callback,
         ],
     )
 
@@ -217,12 +290,12 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
     )
 
     _, X_test_enc = target_encode_cv(
-        X_tr, y_tr, X_test, ALL_CAT_COLS, n_splits=5, smoothing=5
+        X_tr, y_tr, X_test, ALL_CAT_COLS, n_splits=10, smoothing=5
     )
 
     dtest = xgb.DMatrix(X_test_enc)
-    test_xgb += xgb_model.predict(dtest) / 5
-    test_lgb += lgb_model.predict(X_test_enc) / 5
+    test_xgb += xgb_model.predict(dtest) / 10
+    test_lgb += lgb_model.predict(X_test_enc) / 10
 
 print("\n模型评估")
 xgb_oof_auc = roc_auc_score(y, oof_xgb)
@@ -251,11 +324,10 @@ print("\n最终结果")
 print(f"XGBoost  OOF AUC: {xgb_oof_auc:.6f}")
 print(f"LightGBM OOF AUC: {lgb_oof_auc:.6f}")
 print(f"融合后   OOF AUC: {best_auc:.6f}")
-print(f"提升: {best_auc - max(xgb_oof_auc, lgb_oof_auc):+.6f}")
 
 submission = pd.DataFrame({"id": test_ids, "Churn": test_preds})
-submission.to_csv("submissions/v9_ensemble.csv", index=False)
-print(f"\n提交文件已保存: submissions/v9_ensemble.csv")
+submission.to_csv("submissions/v10_ensemble.csv", index=False)
+print(f"\n提交文件已保存: submissions/v10_ensemble.csv")
 print(
     f"预测分布: min={test_preds.min():.4f}, max={test_preds.max():.4f}, mean={test_preds.mean():.4f}"
 )
